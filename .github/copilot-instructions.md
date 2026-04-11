@@ -45,6 +45,37 @@ Key conventions and repository-specific rules
   - Use `juce::dsp::FFT` for all FFT operations and `juce::AudioFormatManager` / `juce::AudioFormatWriter` for WAV I/O.
   - Use tools\agent\agent.config.json for automation rules; modify only with human approval.
 
+Automation runtime warnings
+--------------------------
+- Warning for automation agents: when running PowerShell commands from automation or helper scripts, do not overwrite or reassign reserved/system variables such as `$PID`.
+- Avoid compact backgrounding one-liners that capture output into variables and then try to treat that value as a process id. Examples that caused failures:
+
+  ```powershell
+  # ❌ Unsafe — attempts to overwrite built-in $PID and treats command output as a PID
+  $output = & "build\Convolver_artefacts\Debug\Convolver.exe" 2>&1 &;
+  $pid = $output
+  Stop-Process -Id $pid
+  ```
+
+- Recommended safe patterns:
+
+  ```powershell
+  # 1) Start and control a process object
+  $proc = Start-Process -FilePath "build\Convolver_artefacts\Debug\Convolver.exe" -PassThru
+  Start-Sleep -Seconds 4
+  if (-not $proc.HasExited) {
+      $proc.CloseMainWindow() | Out-Null
+      $proc.WaitForExit(5000) | Out-Null
+  }
+  $proc.ExitCode
+
+  # 2) Run blocking and check exit code
+  & "build\Convolver_artefacts\Debug\Convolver.exe"
+  Write-Output $LASTEXITCODE
+  ```
+
+- When implementing automation steps in `tools/agent/*` or in CI tasks, prefer explicit `Start-Process` usage or blocking execution to avoid shell-specific pitfalls. Log outputs to files instead of relying on fragile in-memory captures.
+
 Documentation & existing guidance
 - Algorithmic reference: `Docs/farina_algorithm_coding_reference.md` — describes the Farina ESS pipeline. This project focuses on the **convolution steps** (Phase C: deconvolution via frequency-domain multiply, and general-purpose WAV convolution).
 - JUCE documentation: https://docs.juce.com/master/index.html
