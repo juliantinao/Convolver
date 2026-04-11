@@ -1,0 +1,38 @@
+# Visual Studio
+**/.vs/
+**/x64/
+**/Debug/
+**/Release/
+*.user
+*.suo
+*.ncb
+*.sdf
+*.opensdf
+*.opendb
+*.db
+*.db-shm
+*.db-wal
+
+# Legacy VS project files (build is CMake-driven)
+Convolver.slnx
+Convolver.vcxproj
+Convolver.vcxproj.filters
+Convolver.vcxproj.user
+
+# CMake build artifacts
+Builds/
+build/
+out/
+CMakeSettings.json
+
+# JUCE generated
+JuceLibraryCode/
+
+# Logs
+logs/
+tools/agent/*.log
+data/measurements/
+
+# OS
+Thumbs.db
+.DS_Store

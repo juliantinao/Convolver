@@ -1,0 +1,19 @@
+{
+  "project": "Convolver",
+  "buildSystem": "CMake",
+  "juceDir": "C:/JUCE",
+  "generator": "Visual Studio 18 2026",
+  "architecture": "x64",
+  "buildDir": "build",
+  "sourceDir": "Source",
+  "rules": {
+    "neverEdit": [
+      "build/**",
+      "JuceLibraryCode/**"
+    ],
+    "logFiles": {
+      "build": "tools/agent/build.log",
+      "run": "tools/agent/run.log"
+    }
+  }
+}
