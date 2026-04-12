@@ -17,6 +17,11 @@ juce_add_gui_app(Convolver
 # Generate JuceHeader.h for convenient single-include
 juce_generate_juce_header(Convolver)
 
+# Ensure the generated header is visible to the target and to IDE/intellisense.
+# The generated `JuceHeader.h` is created in the build directory, so add the
+# build tree to the target's include directories for the build-context.
+target_include_directories(Convolver PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
+
 # Source files
 target_sources(Convolver PRIVATE
     Source/Main.cpp
