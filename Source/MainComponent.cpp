@@ -103,7 +103,15 @@ MainComponent::MainComponent()
                             findColour (juce::ResizableWindow::backgroundColourId));
     fileTreeView.setColour (juce::TreeView::selectedItemBackgroundColourId,
                             juce::Colours::cornflowerblue.withAlpha (0.45f));
+    fileTreeBorder.setText ({ });
+    fileTreeBorder.setText ("Measured Sweeps");
+    fileTreeBorder.setColour (juce::GroupComponent::outlineColourId,
+                              juce::Colours::grey);
+    fileTreeBorder.setColour (juce::GroupComponent::textColourId,
+                              juce::Colours::white);
+    addAndMakeVisible (fileTreeBorder);
     addAndMakeVisible (fileTreeView);
+    fileTreeBorder.toFront (false);
 
     addButton.onClick = [this]
     {
@@ -135,7 +143,7 @@ void MainComponent::paint (juce::Graphics& g)
 {
     g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
 
-    g.setFont (juce::FontOptions (24.0f));
+    g.setFont (juce::FontOptions (20.0f));
     g.setColour (juce::Colours::white);
     g.drawText ("Convolver Batch WAV Convolution",
                 getLocalBounds().reduced (12, 8), juce::Justification::topLeft, true);
@@ -150,10 +158,14 @@ void MainComponent::resized()
     auto leftColumn = bounds.removeFromLeft (320);
     auto buttonRow = leftColumn.removeFromBottom (36);
 
-    fileTreeView.setBounds (leftColumn);
+    fileTreeBorder.setBounds (leftColumn);
+    fileTreeView.setBounds (leftColumn.reduced (1).withTrimmedTop (18));
 
-    auto addButtonBounds = buttonRow.removeFromLeft ((buttonRow.getWidth() - 8) / 2);
-    buttonRow.removeFromLeft (8);
+    auto addButtonBounds = buttonRow.removeFromLeft ((buttonRow.getWidth()) / 2);
+    addButtonBounds.removeFromLeft(1);
+    
+    buttonRow.removeFromLeft (6);
+    buttonRow.removeFromRight(1);
 
     addButton.setBounds (addButtonBounds);
     removeButton.setBounds (buttonRow);

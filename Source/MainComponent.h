@@ -27,6 +27,7 @@ private:
     friend class FileListRootItem;
 
     std::unique_ptr<FileListRootItem> fileListRootItem;
+    juce::GroupComponent fileTreeBorder;
     juce::TreeView fileTreeView;
     juce::TextButton addButton { "Add" };
     juce::TextButton removeButton { "Remove" };
