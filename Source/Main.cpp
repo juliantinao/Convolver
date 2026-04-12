@@ -4,7 +4,13 @@
 class ConvolverApplication : public juce::JUCEApplication
 {
 public:
-    ConvolverApplication() = default;
+    ConvolverApplication()
+    {
+        auto exeFile = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
+        auto logFile = exeFile.getParentDirectory().getChildFile ("convolver_runtime.log");
+        fileLogger = std::make_unique<juce::FileLogger> (logFile, "Convolver Runtime Log", 0);
+        juce::Logger::setCurrentLogger (fileLogger.get());
+    }
 
     const juce::String getApplicationName() override    { return ProjectInfo::projectName; }
     const juce::String getApplicationVersion() override { return ProjectInfo::versionString; }
@@ -18,6 +24,8 @@ public:
     void shutdown() override
     {
         mainWindow.reset();
+        juce::Logger::setCurrentLogger (nullptr);
+        fileLogger.reset();
     }
 
     void systemRequestedQuit() override
@@ -59,6 +67,7 @@ public:
     };
 
 private:
+    std::unique_ptr<juce::FileLogger> fileLogger;
     std::unique_ptr<MainWindow> mainWindow;
 };
 

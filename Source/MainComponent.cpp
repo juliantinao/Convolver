@@ -13,7 +13,7 @@ void MainComponent::paint (juce::Graphics& g)
 
     g.setFont (juce::FontOptions (24.0f));
     g.setColour (juce::Colours::white);
-    g.drawText ("Convolver — Batch WAV Convolution",
+    g.drawText ("Convolver Batch WAV Convolution",
                 getLocalBounds(), juce::Justification::centred, true);
 }
 

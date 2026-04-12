@@ -28,6 +28,7 @@ target_compile_features(Convolver PRIVATE cxx_std_20)
 target_compile_definitions(Convolver PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
+    JUCE_LOG_ASSERTIONS=1
     JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:Convolver,JUCE_PRODUCT_NAME>"
     JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:Convolver,JUCE_VERSION>")
 

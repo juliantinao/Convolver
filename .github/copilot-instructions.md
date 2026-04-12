@@ -14,6 +14,23 @@ Build system
   ```
 - Or open the repo folder in Visual Studio as a CMake project (File → Open → CMake…).
 
+Running (default)
+- The recommended, default way to run the application and capture JUCE assertions is the provided runner script `tools/agent/run_capture_assertions.ps1`.
+- The build includes `JUCE_LOG_ASSERTIONS=1` (set in CMakeLists.txt), which routes assertion messages through `Logger::writeToLog()` instead of `OutputDebugString`, making them capturable without a native debugger.
+- `Main.cpp` sets up a `juce::FileLogger` in the `ConvolverApplication` constructor that writes all logged messages (including assertion failures) to `convolver_runtime.log` next to the executable.
+- The script auto-detects the built executable in common output paths (`out/build/x64-debug/...` for VS CMake integration, `build/...` for standalone CMake), runs the app with a configurable timeout, then reads and parses the FileLogger output for assertion patterns.
+- If `cdb.exe` (Debugging Tools for Windows) is available the script uses it as an enhanced path that also captures stack traces on breakpoints.
+- `JUCE_LOG_ASSERTIONS=1` makes assertions log-and-continue when NOT running under a debugger. When running under the VS debugger (green play button), assertions still trigger a breakpoint as expected.
+- Default invocation (PowerShell):
+  ```powershell
+  .\tools\agent\run_capture_assertions.ps1
+  # auto-detects exe, TimeoutSeconds=10
+  ```
+- With explicit exe path or custom timeout:
+  ```powershell
+  .\tools\agent\run_capture_assertions.ps1 -ExePath .\build\Convolver_artefacts\Debug\Convolver.exe -TimeoutSeconds 15
+  ```
+
 Tests & lint
 - No test or lint targets detected in the repository. If tests are added, place them under Tests/ and document the runner in this file.
 - To run a single test: not applicable until a test runner is present—add test-target docs when tests are introduced.
@@ -86,8 +103,11 @@ Other AI/assistant configs checked
 
 Where to look for problems
 - Build logs: tools\agent\build.log
-- Run logs: tools\agent\run.log
-- Runtime exceptions and JUCE checks: search run.log for JUCE_ASSERT, JUCE_CHECK, "Assertion failed", "Unhandled exception", "terminate called", or "exception:".
+- Run logs: tools\agent\run.log (copied from `<exe_dir>/convolver_runtime.log` by the runner script).
+- Raw FileLogger output: `<exe_dir>/convolver_runtime.log` (created by the app at runtime).
+- stdout/stderr capture: tools\agent\logs\run_stdout.log, tools\agent\logs\run_stderr.log.
+- cdb session logs (when cdb.exe is available): tools\agent\logs\cdb_*.log.
+- Runtime assertions and errors: search run.log for `JUCE Assertion failure in`, "Unhandled exception", "terminate called", or "exception:".
 
 Maintaining this file
 - Keep this file updated when:
