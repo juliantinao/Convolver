@@ -34,5 +34,17 @@ private:
     std::vector<FileEntry> fileEntries;
     int nextFileId = 1;
 
+    juce::GroupComponent convolveFileBorder;
+    juce::Label convolveFileLabel;
+    juce::TextButton convolveFileSelectButton { "Select" };
+    juce::File convolveFile;
+
+    juce::GroupComponent outputDirBorder;
+    juce::Label outputDirLabel;
+    juce::TextButton outputDirSelectButton { "Select" };
+    juce::File outputDirectory;
+
+    juce::TextButton convolveButton { "Convolve" };
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

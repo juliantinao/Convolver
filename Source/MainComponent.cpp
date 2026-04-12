@@ -103,7 +103,6 @@ MainComponent::MainComponent()
                             findColour (juce::ResizableWindow::backgroundColourId));
     fileTreeView.setColour (juce::TreeView::selectedItemBackgroundColourId,
                             juce::Colours::cornflowerblue.withAlpha (0.45f));
-    fileTreeBorder.setText ({ });
     fileTreeBorder.setText ("Measured Sweeps");
     fileTreeBorder.setColour (juce::GroupComponent::outlineColourId,
                               juce::Colours::grey);
@@ -134,10 +133,82 @@ MainComponent::MainComponent()
     addAndMakeVisible (addButton);
     addAndMakeVisible (removeButton);
 
+    convolveFileBorder.setText ("With this file:");
+    convolveFileBorder.setColour (juce::GroupComponent::outlineColourId,
+                                  juce::Colours::grey);
+    convolveFileBorder.setColour (juce::GroupComponent::textColourId,
+                                  juce::Colours::white);
+    addAndMakeVisible (convolveFileBorder);
+
+    convolveFileLabel.setText ("(no file selected)", juce::dontSendNotification);
+    convolveFileLabel.setColour (juce::Label::textColourId, juce::Colours::white);
+    convolveFileLabel.setJustificationType (juce::Justification::centredLeft);
+    addAndMakeVisible (convolveFileLabel);
+    convolveFileBorder.toFront (false);
+
+    convolveFileSelectButton.onClick = [this]
+    {
+        auto chooser = std::make_shared<juce::FileChooser> ("Open .wav file", juce::File(), "*.wav");
+
+        chooser->launchAsync (juce::FileBrowserComponent::openMode
+                              | juce::FileBrowserComponent::canSelectFiles,
+                              [this, chooser] (const juce::FileChooser& result)
+                              {
+                                  auto results = result.getResults();
+                                  if (! results.isEmpty())
+                                  {
+                                      convolveFile = results.getFirst();
+                                      convolveFileLabel.setText (convolveFile.getFileName(),
+                                                                 juce::dontSendNotification);
+                                      convolveFileLabel.setTooltip (convolveFile.getFullPathName());
+                                  }
+                              });
+    };
+    addAndMakeVisible (convolveFileSelectButton);
+
+    outputDirBorder.setText ("Output Directory:");
+    outputDirBorder.setColour (juce::GroupComponent::outlineColourId,
+                               juce::Colours::grey);
+    outputDirBorder.setColour (juce::GroupComponent::textColourId,
+                               juce::Colours::white);
+    addAndMakeVisible (outputDirBorder);
+
+    outputDirLabel.setText ("(no directory selected)", juce::dontSendNotification);
+    outputDirLabel.setColour (juce::Label::textColourId, juce::Colours::white);
+    outputDirLabel.setJustificationType (juce::Justification::centredLeft);
+    addAndMakeVisible (outputDirLabel);
+    outputDirBorder.toFront (false);
+
+    outputDirSelectButton.onClick = [this]
+    {
+        auto chooser = std::make_shared<juce::FileChooser> ("Select output directory");
+
+        chooser->launchAsync (juce::FileBrowserComponent::openMode
+                              | juce::FileBrowserComponent::canSelectDirectories,
+                              [this, chooser] (const juce::FileChooser& result)
+                              {
+                                  auto results = result.getResults();
+                                  if (! results.isEmpty())
+                                  {
+                                      outputDirectory = results.getFirst();
+                                      outputDirLabel.setText (outputDirectory.getFullPathName(),
+                                                              juce::dontSendNotification);
+                                      outputDirLabel.setTooltip (outputDirectory.getFullPathName());
+                                  }
+                              });
+    };
+    addAndMakeVisible (outputDirSelectButton);
+
+    addAndMakeVisible (convolveButton);
+
     refreshFileList();
 }
 
-MainComponent::~MainComponent() = default;
+MainComponent::~MainComponent()
+{
+    fileTreeView.setRootItem (nullptr);
+    fileListRootItem.reset();
+}
 
 void MainComponent::paint (juce::Graphics& g)
 {
@@ -163,12 +234,37 @@ void MainComponent::resized()
 
     auto addButtonBounds = buttonRow.removeFromLeft ((buttonRow.getWidth()) / 2);
     addButtonBounds.removeFromLeft(1);
-    
+
     buttonRow.removeFromLeft (6);
     buttonRow.removeFromRight(1);
 
     addButton.setBounds (addButtonBounds);
     removeButton.setBounds (buttonRow);
+
+    auto rightColumn = bounds;
+    rightColumn.removeFromLeft (12);
+
+    constexpr int groupHeight = 48;
+    constexpr int selectButtonWidth = 70;
+    constexpr int spacing = 10;
+
+    auto convolveFileRow = rightColumn.removeFromTop (groupHeight);
+    auto convolveFileSelectArea = convolveFileRow.removeFromRight (selectButtonWidth);
+    convolveFileBorder.setBounds (convolveFileRow);
+    convolveFileLabel.setBounds (convolveFileRow.reduced (8).withTrimmedTop (14));
+    convolveFileSelectButton.setBounds (convolveFileSelectArea.withSizeKeepingCentre (selectButtonWidth, 28));
+
+    rightColumn.removeFromTop (spacing);
+
+    auto outputDirRow = rightColumn.removeFromTop (groupHeight);
+    auto outputDirSelectArea = outputDirRow.removeFromRight (selectButtonWidth);
+    outputDirBorder.setBounds (outputDirRow);
+    outputDirLabel.setBounds (outputDirRow.reduced (8).withTrimmedTop (14));
+    outputDirSelectButton.setBounds (outputDirSelectArea.withSizeKeepingCentre (selectButtonWidth, 28));
+
+    rightColumn.removeFromTop (spacing);
+
+    convolveButton.setBounds (rightColumn.removeFromTop (48));
 }
 
 void MainComponent::addFiles (const juce::Array<juce::File>& filesToAdd)
