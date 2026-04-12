@@ -59,6 +59,7 @@ Key conventions and repository-specific rules
   - All code must follow JUCE coding standards and project conventions; refer to JUCE documentation for API usage: https://docs.juce.com/master/index.html.
   - Use JUCE API's and classes for all applicable tasks; avoid custom implementations when JUCE provides a solution (e.g., juce::File for file handling, juce::Thread for threading, juce::AudioBuffer for audio processing).
   - JUCE functions and classes are always preferred over custom implementations for common tasks (e.g., file handling, threading, audio processing) to maintain consistency and reliability.
+  - Do not read JuceLibraryCode/ unless it is really necessary, preffer to consult JUCE documentation for understanding module APIs in https://docs.juce.com/master/index.html.
   - Use `juce::dsp::FFT` for all FFT operations and `juce::AudioFormatManager` / `juce::AudioFormatWriter` for WAV I/O.
   - Use tools\agent\agent.config.json for automation rules; modify only with human approval.
 
