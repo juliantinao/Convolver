@@ -1,4 +1,9 @@
 #include <JuceHeader.h>
+#if JUCE_WINDOWS
+# include <windows.h>
+# include <dwmapi.h>
+# pragma comment(lib, "dwmapi.lib")
+#endif
 #include "MainComponent.h"
 
 class ConvolverApplication : public juce::JUCEApplication
@@ -55,6 +60,18 @@ public:
             {
                 setResizeLimits (content->getWidth(), content->getHeight(), 10000, 10000);
                 centreWithSize (content->getWidth(), content->getHeight());
+            }
+           #endif
+
+            // On Windows, request the native titlebar to use the system dark theme
+           #if JUCE_WINDOWS
+            if (auto* hwnd = static_cast<HWND> (getWindowHandle()))
+            {
+                // DWMWA_USE_IMMERSIVE_DARK_MODE = 20 on newer Windows 10/11, 19 on older builds
+                BOOL useDark = TRUE;
+                HRESULT hr = DwmSetWindowAttribute (hwnd, 20, &useDark, sizeof (useDark));
+                if (FAILED (hr))
+                    DwmSetWindowAttribute (hwnd, 19, &useDark, sizeof (useDark));
             }
            #endif
 
