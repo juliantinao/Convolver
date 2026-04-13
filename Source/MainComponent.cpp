@@ -103,7 +103,7 @@ MainComponent::MainComponent()
                             findColour (juce::ResizableWindow::backgroundColourId));
     fileTreeView.setColour (juce::TreeView::selectedItemBackgroundColourId,
                             juce::Colours::cornflowerblue.withAlpha (0.45f));
-    fileTreeBorder.setText ("Measured Sweeps");
+    fileTreeBorder.setText ("Convolve this files: ");
     fileTreeBorder.setColour (juce::GroupComponent::outlineColourId,
                               juce::Colours::grey);
     fileTreeBorder.setColour (juce::GroupComponent::textColourId,
@@ -245,14 +245,14 @@ void MainComponent::resized()
     rightColumn.removeFromLeft (12);
 
     constexpr int groupHeight = 48;
-    constexpr int selectButtonWidth = 70;
-    constexpr int spacing = 10;
+    constexpr int selectButtonWidth = 80;
+    constexpr int spacing = 20;
 
     auto convolveFileRow = rightColumn.removeFromTop (groupHeight);
     auto convolveFileSelectArea = convolveFileRow.removeFromRight (selectButtonWidth);
     convolveFileBorder.setBounds (convolveFileRow);
     convolveFileLabel.setBounds (convolveFileRow.reduced (8).withTrimmedTop (14));
-    convolveFileSelectButton.setBounds (convolveFileSelectArea.withSizeKeepingCentre (selectButtonWidth, 28));
+    convolveFileSelectButton.setBounds (convolveFileSelectArea.withTrimmedTop(6).withSizeKeepingCentre (selectButtonWidth, 36));
 
     rightColumn.removeFromTop (spacing);
 
@@ -260,11 +260,11 @@ void MainComponent::resized()
     auto outputDirSelectArea = outputDirRow.removeFromRight (selectButtonWidth);
     outputDirBorder.setBounds (outputDirRow);
     outputDirLabel.setBounds (outputDirRow.reduced (8).withTrimmedTop (14));
-    outputDirSelectButton.setBounds (outputDirSelectArea.withSizeKeepingCentre (selectButtonWidth, 28));
+    outputDirSelectButton.setBounds (outputDirSelectArea.withTrimmedTop(6).withSizeKeepingCentre(selectButtonWidth, 36));
 
     rightColumn.removeFromTop (spacing);
 
-    convolveButton.setBounds (rightColumn.removeFromTop (48));
+    convolveButton.setBounds (rightColumn.removeFromBottom (48));
 }
 
 void MainComponent::addFiles (const juce::Array<juce::File>& filesToAdd)
