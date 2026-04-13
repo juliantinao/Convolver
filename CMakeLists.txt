@@ -25,7 +25,9 @@ target_include_directories(Convolver PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_B
 # Source files
 target_sources(Convolver PRIVATE
     Source/Main.cpp
-    Source/MainComponent.cpp)
+    Source/MainComponent.cpp
+    # Dark look-and-feel implementation
+    Source/DarkLookAndFeel.cpp)
 
 target_compile_features(Convolver PRIVATE cxx_std_20)
 

@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "DarkLookAndFeel.h"
 
 class FileListModel : public juce::ListBoxModel
 {
@@ -37,28 +38,16 @@ MainComponent::MainComponent()
 {
     setSize (900, 495);
 
-    // Dark mode color scheme
-    auto darkBg = juce::Colour::fromRGB (33, 33, 33);
-    auto panelBg = juce::Colour::fromRGB (28, 28, 28);
-    auto outlineCol = juce::Colour::fromRGB (64, 64, 64);
-    auto controlCol = juce::Colour::fromRGB (45, 45, 45);
-    auto textCol = juce::Colours::white;
-
-    // Apply to this component look-and-feel so child components inherit sensible defaults
-    getLookAndFeel().setColour (juce::ResizableWindow::backgroundColourId, darkBg);
-    getLookAndFeel().setColour (juce::ListBox::backgroundColourId, panelBg);
-    getLookAndFeel().setColour (juce::GroupComponent::outlineColourId, outlineCol);
-    getLookAndFeel().setColour (juce::GroupComponent::textColourId, textCol);
-    getLookAndFeel().setColour (juce::Label::textColourId, textCol);
-    getLookAndFeel().setColour (juce::TextButton::buttonColourId, controlCol);
-    getLookAndFeel().setColour (juce::TextButton::textColourOffId, textCol);
+    // Use a dedicated LookAndFeel for dark mode
+    darkLookAndFeel = std::make_unique<DarkLookAndFeel>();
+    setLookAndFeel (darkLookAndFeel.get());
 
     fileListModel = std::make_unique<FileListModel> (*this);
     fileListBox.setModel (fileListModel.get());
     fileListBox.setMultipleSelectionEnabled (true);
     fileListBox.setRowHeight (24);
     fileListBox.setColour (juce::ListBox::backgroundColourId,
-                           findColour (juce::ResizableWindow::backgroundColourId));
+                           findColour (juce::ListBox::backgroundColourId));
     fileListBorder.setText ("Convolve this files: ");
     fileListBorder.setColour (juce::GroupComponent::outlineColourId,
                               findColour (juce::GroupComponent::outlineColourId));
@@ -172,6 +161,8 @@ MainComponent::~MainComponent()
 {
     fileListBox.setModel (nullptr);
     fileListModel.reset();
+    setLookAndFeel (nullptr);
+    darkLookAndFeel.reset();
 }
 
 void MainComponent::paint (juce::Graphics& g)
@@ -179,7 +170,7 @@ void MainComponent::paint (juce::Graphics& g)
     g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
 
     g.setFont (juce::FontOptions (20.0f));
-    g.setColour (juce::Colours::white);
+    g.setColour (findColour (juce::Label::textColourId));
     g.drawText ("Convolver Batch WAV Convolution",
                 getLocalBounds().reduced (12, 8), juce::Justification::topLeft, true);
 }

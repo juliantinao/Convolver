@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 
 class FileListModel;
+class DarkLookAndFeel;
 
 class MainComponent : public juce::Component
 {
@@ -27,6 +28,7 @@ private:
     void refreshFileList();
 
     std::unique_ptr<FileListModel> fileListModel;
+    std::unique_ptr<DarkLookAndFeel> darkLookAndFeel;
     juce::GroupComponent fileListBorder;
     juce::ListBox fileListBox;
     juce::TextButton addButton { "Add" };
