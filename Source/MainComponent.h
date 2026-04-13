@@ -44,6 +44,7 @@ private:
     juce::TextButton outputDirSelectButton { "Select" };
     juce::File outputDirectory;
 
+    juce::TextButton helpButton { "Help" };
     juce::TextButton convolveButton { "Convolve" };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)

@@ -199,6 +199,14 @@ MainComponent::MainComponent()
     };
     addAndMakeVisible (outputDirSelectButton);
 
+    helpButton.onClick = [this]
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::AlertWindow::InfoIcon,
+                                                "Help",
+                                                "Select an impulse response, choose output directory, add WAV files and press Convolve.");
+    };
+
+    addAndMakeVisible (helpButton);
     addAndMakeVisible (convolveButton);
 
     refreshFileList();
@@ -264,7 +272,13 @@ void MainComponent::resized()
 
     rightColumn.removeFromTop (spacing);
 
-    convolveButton.setBounds (rightColumn.removeFromBottom (48));
+    // place convolve button snapped to bottom and help button just above it
+    auto convolveArea = rightColumn.removeFromBottom (48);
+    convolveButton.setBounds (convolveArea);
+
+    auto helpArea = rightColumn.removeFromBottom (48);
+    // inset help button slightly to match other controls height
+    helpButton.setBounds (helpArea.withSizeKeepingCentre (convolveArea.getWidth(), 36));
 }
 
 void MainComponent::addFiles (const juce::Array<juce::File>& filesToAdd)
