@@ -1,5 +1,6 @@
 #include "MainComponent.h"
 #include "DarkLookAndFeel.h"
+#include "ConvolutionEngine.h"
 
 class FileListModel : public juce::ListBoxModel
 {
@@ -111,7 +112,7 @@ MainComponent::MainComponent()
     };
     addAndMakeVisible (convolveFileSelectButton);
 
-    outputDirBorder.setText ("Output Directory:");
+    outputDirBorder.setText ("Output Path:");
     outputDirBorder.setColour (juce::GroupComponent::outlineColourId,
                                findColour (juce::GroupComponent::outlineColourId));
     outputDirBorder.setColour (juce::GroupComponent::textColourId,
@@ -126,7 +127,7 @@ MainComponent::MainComponent()
 
     outputDirSelectButton.onClick = [this]
     {
-        auto chooser = std::make_shared<juce::FileChooser> ("Select output directory");
+        auto chooser = std::make_shared<juce::FileChooser> ("Select output path");
 
         chooser->launchAsync (juce::FileBrowserComponent::openMode
                               | juce::FileBrowserComponent::canSelectDirectories,
@@ -144,11 +145,80 @@ MainComponent::MainComponent()
     };
     addAndMakeVisible (outputDirSelectButton);
 
+    prefixBorder.setText ("Output Prefix:");
+    prefixBorder.setColour (juce::GroupComponent::outlineColourId,
+                            findColour (juce::GroupComponent::outlineColourId));
+    prefixBorder.setColour (juce::GroupComponent::textColourId,
+                            findColour (juce::GroupComponent::textColourId));
+    addAndMakeVisible (prefixBorder);
+
+    prefixEditor.setTextToShowWhenEmpty ("e.g. convolved_", juce::Colours::grey);
+    prefixEditor.setColour (juce::TextEditor::backgroundColourId,
+                            findColour (juce::ListBox::backgroundColourId));
+    prefixEditor.setColour (juce::TextEditor::textColourId,
+                            findColour (juce::Label::textColourId));
+    prefixEditor.setColour (juce::TextEditor::outlineColourId,
+                            findColour (juce::GroupComponent::outlineColourId));
+    addAndMakeVisible (prefixEditor);
+    prefixBorder.toFront (false);
+
     helpButton.onClick = [this]
     {
         juce::AlertWindow::showMessageBoxAsync (juce::AlertWindow::InfoIcon,
                                                 "Help",
-                                                "Select an impulse response, choose output directory, add WAV files and press Convolve.");
+                                                "Select an impulse response, choose output directory, set a filename prefix, add WAV files and press Convolve.");
+    };
+
+    convolveButton.onClick = [this]
+    {
+        if (fileEntries.empty())
+        {
+            juce::AlertWindow::showMessageBoxAsync (juce::AlertWindow::WarningIcon,
+                                                    "Error", "No WAV files added.");
+            return;
+        }
+
+        if (! convolveFile.existsAsFile())
+        {
+            juce::AlertWindow::showMessageBoxAsync (juce::AlertWindow::WarningIcon,
+                                                    "Error", "No impulse response file selected.");
+            return;
+        }
+
+        if (! outputDirectory.isDirectory())
+        {
+            juce::AlertWindow::showMessageBoxAsync (juce::AlertWindow::WarningIcon,
+                                                    "Error", "No output directory selected.");
+            return;
+        }
+
+        auto prefix = prefixEditor.getText();
+        int successCount = 0;
+        juce::StringArray errors;
+
+        for (const auto& entry : fileEntries)
+        {
+            auto outputFileName = prefix + entry.file.getFileName();
+            auto outputFile = outputDirectory.getChildFile (outputFileName);
+
+            auto result = ConvolutionEngine::processFile (entry.file, convolveFile, outputFile);
+
+            if (result.isEmpty())
+                ++successCount;
+            else
+                errors.add (entry.file.getFileName() + ": " + result);
+        }
+
+        juce::String message = juce::String (successCount) + " of "
+                             + juce::String (static_cast<int> (fileEntries.size()))
+                             + " files convolved successfully.";
+
+        if (! errors.isEmpty())
+            message += "\n\nErrors:\n" + errors.joinIntoString ("\n");
+
+        juce::AlertWindow::showMessageBoxAsync (
+            errors.isEmpty() ? juce::AlertWindow::InfoIcon : juce::AlertWindow::WarningIcon,
+            "Convolution Complete", message);
     };
 
     addAndMakeVisible (helpButton);
@@ -216,6 +286,12 @@ void MainComponent::resized()
     outputDirBorder.setBounds (outputDirRow);
     outputDirLabel.setBounds (outputDirRow.reduced (8).withTrimmedTop (14));
     outputDirSelectButton.setBounds (outputDirSelectArea.withTrimmedTop(6).withSizeKeepingCentre(selectButtonWidth, 36));
+
+    rightColumn.removeFromTop (spacing);
+
+    auto prefixRow = rightColumn.removeFromTop (groupHeight);
+    prefixBorder.setBounds (prefixRow);
+    prefixEditor.setBounds (prefixRow.reduced (8).withTrimmedTop (14));
 
     rightColumn.removeFromTop (spacing);
 

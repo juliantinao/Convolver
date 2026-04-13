@@ -46,6 +46,10 @@ private:
     juce::TextButton outputDirSelectButton { "Select" };
     juce::File outputDirectory;
 
+    juce::GroupComponent prefixBorder;
+    juce::Label prefixLabel;
+    juce::TextEditor prefixEditor;
+
     juce::TextButton helpButton { "Help" };
     juce::TextButton convolveButton { "Convolve" };
 

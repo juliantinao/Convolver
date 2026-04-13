@@ -27,7 +27,9 @@ target_sources(Convolver PRIVATE
     Source/Main.cpp
     Source/MainComponent.cpp
     # Dark look-and-feel implementation
-    Source/DarkLookAndFeel.cpp)
+    Source/DarkLookAndFeel.cpp
+    # Frequency-domain convolution engine
+    Source/ConvolutionEngine.cpp)
 
 target_compile_features(Convolver PRIVATE cxx_std_20)
 
