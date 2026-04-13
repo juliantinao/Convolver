@@ -51,7 +51,11 @@ public:
             setFullScreen (true);
            #else
             setResizable (true, true);
-            centreWithSize (getWidth(), getHeight());
+            if (auto* content = getContentComponent())
+            {
+                setResizeLimits (content->getWidth(), content->getHeight(), 10000, 10000);
+                centreWithSize (content->getWidth(), content->getHeight());
+            }
            #endif
 
             setVisible (true);

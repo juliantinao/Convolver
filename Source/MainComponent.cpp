@@ -35,7 +35,7 @@ private:
 
 MainComponent::MainComponent()
 {
-    setSize (800, 600);
+    setSize (900, 495);
 
     fileListModel = std::make_unique<FileListModel> (*this);
     fileListBox.setModel (fileListModel.get());
