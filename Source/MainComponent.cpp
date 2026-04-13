@@ -162,6 +162,13 @@ MainComponent::MainComponent()
     addAndMakeVisible (prefixEditor);
     prefixBorder.toFront (false);
 
+    maintainLevelToggle.setToggleState (true, juce::dontSendNotification);
+    maintainLevelToggle.setColour (juce::ToggleButton::textColourId,
+                                   findColour (juce::Label::textColourId));
+    maintainLevelToggle.setColour (juce::ToggleButton::tickColourId,
+                                   findColour (juce::Label::textColourId));
+    addAndMakeVisible (maintainLevelToggle);
+
     helpButton.onClick = [this]
     {
         juce::AlertWindow::showMessageBoxAsync (juce::AlertWindow::InfoIcon,
@@ -193,21 +200,21 @@ MainComponent::MainComponent()
         }
 
         auto prefix = prefixEditor.getText();
-        int successCount = 0;
         juce::StringArray errors;
+
+        std::vector<ConvolutionEngine::FilePair> filePairs;
+        filePairs.reserve (fileEntries.size());
 
         for (const auto& entry : fileEntries)
         {
             auto outputFileName = prefix + entry.file.getFileName();
-            auto outputFile = outputDirectory.getChildFile (outputFileName);
-
-            auto result = ConvolutionEngine::processFile (entry.file, convolveFile, outputFile);
-
-            if (result.isEmpty())
-                ++successCount;
-            else
-                errors.add (entry.file.getFileName() + ": " + result);
+            filePairs.push_back ({ entry.file,
+                                   outputDirectory.getChildFile (outputFileName) });
         }
+
+        bool maintainLevels = maintainLevelToggle.getToggleState();
+        int successCount = ConvolutionEngine::processBatch (filePairs, convolveFile,
+                                                            maintainLevels, errors);
 
         juce::String message = juce::String (successCount) + " of "
                              + juce::String (static_cast<int> (fileEntries.size()))
@@ -289,9 +296,14 @@ void MainComponent::resized()
 
     rightColumn.removeFromTop (spacing);
 
-    auto prefixRow = rightColumn.removeFromTop (groupHeight);
+    auto prefixRow = rightColumn.removeFromTop (groupHeight).removeFromLeft (380);
     prefixBorder.setBounds (prefixRow);
-    prefixEditor.setBounds (prefixRow.reduced (8).withTrimmedTop (14));
+    prefixEditor.setBounds (prefixRow.reduced (8).withTrimmedTop (10));
+
+    rightColumn.removeFromTop (spacing);
+
+    auto toggleRow = rightColumn.removeFromTop (24);
+    maintainLevelToggle.setBounds (toggleRow);
 
     rightColumn.removeFromTop (spacing);
 

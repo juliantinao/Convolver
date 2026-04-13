@@ -26,69 +26,39 @@ static juce::AudioBuffer<float> loadWavFile (const juce::File& file,
 }
 
 //==============================================================================
-juce::String ConvolutionEngine::processFile (const juce::File& inputFile,
-                                             const juce::File& irFile,
-                                             const juce::File& outputFile)
+// Helper: convolve an input buffer with an IR buffer via frequency-domain
+// multiplication (Phase C pattern). Returns the convolved AudioBuffer.
+static juce::AudioBuffer<float> convolveBuffers (const juce::AudioBuffer<float>& inputBuffer,
+                                                  const juce::AudioBuffer<float>& irBuffer)
 {
-    //--------------------------------------------------------------------------
-    // 1. Read input and IR WAV files
-    //--------------------------------------------------------------------------
-    juce::String inputError, irError;
-    double inputSampleRate = 0.0;
-    double irSampleRate = 0.0;
-
-    auto inputBuffer = loadWavFile (inputFile, inputSampleRate, inputError);
-    if (inputBuffer.getNumSamples() == 0)
-        return inputError;
-
-    auto irBuffer = loadWavFile (irFile, irSampleRate, irError);
-    if (irBuffer.getNumSamples() == 0)
-        return irError;
-
-    //--------------------------------------------------------------------------
-    // 2. Determine FFT size (next power of two >= input + IR - 1)
-    //    This follows the Phase C pattern: zero-pad to N_fft.
-    //--------------------------------------------------------------------------
     const int inputLength = inputBuffer.getNumSamples();
     const int irLength = irBuffer.getNumSamples();
     const int convLength = inputLength + irLength - 1;
 
-    // juce::dsp::FFT requires the order (log2 of the size)
     const int fftOrder = static_cast<int> (std::ceil (std::log2 (static_cast<double> (convLength))));
     const int fftSize = 1 << fftOrder;
 
     juce::dsp::FFT fft (fftOrder);
 
-    // Number of output channels: max of input and IR channels
     const int numOutputChannels = juce::jmax (inputBuffer.getNumChannels(),
                                               irBuffer.getNumChannels());
 
-    // Output buffer for the final convolved result
     juce::AudioBuffer<float> outputBuffer (numOutputChannels, convLength);
     outputBuffer.clear();
 
-    //--------------------------------------------------------------------------
-    // 3. Per-channel convolution via frequency-domain multiplication
-    //    Phase C steps: C.1 zero-pad, C.3 forward FFT, C.4 multiply, C.5 IFFT
-    //--------------------------------------------------------------------------
     for (int ch = 0; ch < numOutputChannels; ++ch)
     {
-        // Pick the channel to read from each buffer, clamping to available channels
         const int inputCh = juce::jmin (ch, inputBuffer.getNumChannels() - 1);
         const int irCh = juce::jmin (ch, irBuffer.getNumChannels() - 1);
 
         // C.1 / C.2 — Zero-pad input and IR to fftSize * 2
-        // juce::dsp::FFT::performRealOnlyForwardTransform expects an array of
-        // size fftSize * 2 (interleaved real/imag pairs).
         std::vector<float> inputFFTData (static_cast<size_t> (fftSize) * 2, 0.0f);
         std::vector<float> irFFTData (static_cast<size_t> (fftSize) * 2, 0.0f);
 
-        // Copy input samples into FFT buffer (zero-padded beyond inputLength)
         std::memcpy (inputFFTData.data(),
                      inputBuffer.getReadPointer (inputCh),
                      sizeof (float) * static_cast<size_t> (inputLength));
 
-        // Copy IR samples into FFT buffer (zero-padded beyond irLength)
         std::memcpy (irFFTData.data(),
                      irBuffer.getReadPointer (irCh),
                      sizeof (float) * static_cast<size_t> (irLength));
@@ -98,7 +68,6 @@ juce::String ConvolutionEngine::processFile (const juce::File& inputFile,
         fft.performRealOnlyForwardTransform (irFFTData.data());
 
         // C.4 — Frequency-domain complex multiplication
-        // Data layout after forward transform: pairs of (real, imag) for each bin.
         for (int k = 0; k < fftSize; ++k)
         {
             const int idx = k * 2;
@@ -107,7 +76,6 @@ juce::String ConvolutionEngine::processFile (const juce::File& inputFile,
             const float realB = irFFTData[static_cast<size_t> (idx)];
             const float imagB = irFFTData[static_cast<size_t> (idx + 1)];
 
-            // (a + bi)(c + di) = (ac - bd) + (ad + bc)i
             inputFFTData[static_cast<size_t> (idx)]     = realA * realB - imagA * imagB;
             inputFFTData[static_cast<size_t> (idx + 1)] = realA * imagB + imagA * realB;
         }
@@ -115,30 +83,33 @@ juce::String ConvolutionEngine::processFile (const juce::File& inputFile,
         // C.5 — Inverse FFT
         fft.performRealOnlyInverseTransform (inputFFTData.data());
 
-        // Copy convolution result (only convLength samples are meaningful)
         auto* dest = outputBuffer.getWritePointer (ch);
 
         for (int n = 0; n < convLength; ++n)
             dest[n] = inputFFTData[static_cast<size_t> (n)];
     }
 
-    //--------------------------------------------------------------------------
-    // 4. Normalise output to avoid clipping
-    //--------------------------------------------------------------------------
-    float peakLevel = 0.0f;
+    return outputBuffer;
+}
 
-    for (int ch = 0; ch < numOutputChannels; ++ch)
-        peakLevel = juce::jmax (peakLevel, outputBuffer.getMagnitude (ch, 0, convLength));
+//==============================================================================
+// Helper: find peak magnitude across all channels of a buffer.
+static float getPeakLevel (const juce::AudioBuffer<float>& buffer)
+{
+    float peak = 0.0f;
 
-    if (peakLevel > 0.0f)
-    {
-        const float scale = 0.9f / peakLevel;
-        outputBuffer.applyGain (scale);
-    }
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        peak = juce::jmax (peak, buffer.getMagnitude (ch, 0, buffer.getNumSamples()));
 
-    //--------------------------------------------------------------------------
-    // 5. Write result to output WAV file
-    //--------------------------------------------------------------------------
+    return peak;
+}
+
+//==============================================================================
+// Helper: write an AudioBuffer to a WAV file.
+static juce::String writeWavFile (const juce::AudioBuffer<float>& buffer,
+                                  double sampleRate,
+                                  const juce::File& outputFile)
+{
     if (outputFile.exists())
         outputFile.deleteFile();
 
@@ -149,8 +120,8 @@ juce::String ConvolutionEngine::processFile (const juce::File& inputFile,
 
     juce::WavAudioFormat wavFormat;
     auto writerOptions = juce::AudioFormatWriterOptions()
-                             .withSampleRate (inputSampleRate)
-                             .withNumChannels (numOutputChannels)
+                             .withSampleRate (sampleRate)
+                             .withNumChannels (buffer.getNumChannels())
                              .withBitsPerSample (16);
 
     auto writer = wavFormat.createWriterFor (fileStream, writerOptions);
@@ -158,10 +129,122 @@ juce::String ConvolutionEngine::processFile (const juce::File& inputFile,
     if (writer == nullptr)
         return "Could not create WAV writer for: " + outputFile.getFullPathName();
 
-    // Writer now owns the stream (fileStream was moved)
-
-    if (! writer->writeFromAudioSampleBuffer (outputBuffer, 0, convLength))
+    if (! writer->writeFromAudioSampleBuffer (buffer, 0, buffer.getNumSamples()))
         return "Failed to write audio data to: " + outputFile.getFullPathName();
 
     return {};
+}
+
+//==============================================================================
+juce::String ConvolutionEngine::processFile (const juce::File& inputFile,
+                                             const juce::File& irFile,
+                                             const juce::File& outputFile)
+{
+    juce::StringArray errors;
+    processBatch ({ { inputFile, outputFile } }, irFile, false, errors);
+
+    if (errors.isEmpty())
+        return {};
+
+    return errors[0];
+}
+
+//==============================================================================
+int ConvolutionEngine::processBatch (const std::vector<FilePair>& filePairs,
+                                     const juce::File& irFile,
+                                     bool maintainRelativeLevels,
+                                     juce::StringArray& errors)
+{
+    // Load the IR once for the whole batch
+    juce::String irError;
+    double irSampleRate = 0.0;
+    auto irBuffer = loadWavFile (irFile, irSampleRate, irError);
+
+    if (irBuffer.getNumSamples() == 0)
+    {
+        errors.add ("IR: " + irError);
+        return 0;
+    }
+
+    struct ConvolvedResult
+    {
+        juce::AudioBuffer<float> buffer;
+        double sampleRate = 0.0;
+        juce::File outputFile;
+        float peakLevel = 0.0f;
+    };
+
+    std::vector<ConvolvedResult> results;
+    results.reserve (filePairs.size());
+    int successCount = 0;
+
+    //--------------------------------------------------------------------------
+    // Phase 1: convolve all files into memory buffers
+    //--------------------------------------------------------------------------
+    for (const auto& pair : filePairs)
+    {
+        juce::String inputError;
+        double inputSampleRate = 0.0;
+        auto inputBuffer = loadWavFile (pair.inputFile, inputSampleRate, inputError);
+
+        if (inputBuffer.getNumSamples() == 0)
+        {
+            errors.add (pair.inputFile.getFileName() + ": " + inputError);
+            continue;
+        }
+
+        auto convolved = convolveBuffers (inputBuffer, irBuffer);
+        float peak = getPeakLevel (convolved);
+
+        results.push_back ({ std::move (convolved), inputSampleRate,
+                             pair.outputFile, peak });
+    }
+
+    //--------------------------------------------------------------------------
+    // Phase 2: normalise
+    //--------------------------------------------------------------------------
+    if (maintainRelativeLevels)
+    {
+        // Find the global peak across all convolved results
+        float globalPeak = 0.0f;
+
+        for (const auto& r : results)
+            globalPeak = juce::jmax (globalPeak, r.peakLevel);
+
+        // Apply the same gain to every result so the loudest hits 0.99
+        if (globalPeak > 0.0f)
+        {
+            const float scale = 0.99f / globalPeak;
+
+            for (auto& r : results)
+                r.buffer.applyGain (scale);
+        }
+    }
+    else
+    {
+        // Normalise each result independently to 0.99
+        for (auto& r : results)
+        {
+            if (r.peakLevel > 0.0f)
+            {
+                const float scale = 0.99f / r.peakLevel;
+                r.buffer.applyGain (scale);
+            }
+        }
+    }
+
+    //--------------------------------------------------------------------------
+    // Phase 3: write all results to disk
+    //--------------------------------------------------------------------------
+    for (const auto& r : results)
+    {
+        auto writeError = writeWavFile (r.buffer, r.sampleRate, r.outputFile);
+
+        if (writeError.isEmpty())
+            ++successCount;
+        else
+            errors.add (r.outputFile.getFileName() + ": " + writeError);
+    }
+
+    return successCount;
 }

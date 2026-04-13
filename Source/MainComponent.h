@@ -50,6 +50,8 @@ private:
     juce::Label prefixLabel;
     juce::TextEditor prefixEditor;
 
+    juce::ToggleButton maintainLevelToggle { "Maintain relative level between files." };
+
     juce::TextButton helpButton { "Help" };
     juce::TextButton convolveButton { "Convolve" };
 
