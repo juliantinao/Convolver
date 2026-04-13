@@ -1,88 +1,32 @@
 #include "MainComponent.h"
 
-#include <unordered_set>
-
-namespace
-{
-class FileListItem : public juce::TreeViewItem
+class FileListModel : public juce::ListBoxModel
 {
 public:
-    FileListItem (int idIn, juce::File fileIn)
-        : id (idIn), file (std::move (fileIn))
-    {
-    }
-
-    bool mightContainSubItems() override
-    {
-        return false;
-    }
-
-    juce::String getUniqueName() const override
-    {
-        return juce::String (id);
-    }
-
-    int getItemHeight() const override
-    {
-        return 24;
-    }
-
-    void paintItem (juce::Graphics& g, int width, int height) override
-    {
-        auto area = juce::Rectangle<int> (0, 0, width, height).reduced (6, 0);
-
-        if (auto* ownerView = getOwnerView())
-            g.setColour (ownerView->findColour (juce::Label::textColourId));
-        else
-            g.setColour (juce::Colours::white);
-
-        g.drawText (file.getFileName(), area, juce::Justification::centredLeft, true);
-    }
-
-    juce::String getTooltip() override
-    {
-        return file.getFullPathName();
-    }
-
-    int getId() const noexcept
-    {
-        return id;
-    }
-
-private:
-    int id = 0;
-    juce::File file;
-};
-
-} // namespace
-
-class FileListRootItem : public juce::TreeViewItem
-{
-public:
-    explicit FileListRootItem (MainComponent& ownerIn)
+    explicit FileListModel (MainComponent& ownerIn)
         : owner (ownerIn)
     {
-        setOpen (true);
     }
 
-    bool mightContainSubItems() override
+    int getNumRows() override
     {
-        return true;
+        return static_cast<int> (owner.fileEntries.size());
     }
 
-    juce::String getUniqueName() const override
+    void paintListBoxItem (int rowNumber, juce::Graphics& g, int width, int height, bool selected) override
     {
-        return "file-list-root";
-    }
+        if (! juce::isPositiveAndBelow (rowNumber, static_cast<int> (owner.fileEntries.size())))
+            return;
 
-    void refresh()
-    {
-        clearSubItems();
+        if (selected)
+            g.fillAll (juce::Colours::cornflowerblue.withAlpha (0.45f));
 
-        for (const auto& entry : owner.fileEntries)
-            addSubItem (new FileListItem (entry.id, entry.file));
-
-        treeHasChanged();
+        auto area = juce::Rectangle<int> (0, 0, width, height).reduced (6, 0);
+        g.setColour (owner.fileListBox.findColour (juce::Label::textColourId));
+        g.drawText (owner.fileEntries[(size_t) rowNumber].file.getFileName(),
+                    area,
+                    juce::Justification::centredLeft,
+                    true);
     }
 
 private:
@@ -93,24 +37,20 @@ MainComponent::MainComponent()
 {
     setSize (800, 600);
 
-    fileListRootItem = std::make_unique<FileListRootItem> (*this);
-    fileTreeView.setRootItem (fileListRootItem.get());
-    fileTreeView.setRootItemVisible (false);
-    fileTreeView.setDefaultOpenness (true);
-    fileTreeView.setMultiSelectEnabled (true);
-    fileTreeView.setOpenCloseButtonsVisible (false);
-    fileTreeView.setColour (juce::TreeView::backgroundColourId,
-                            findColour (juce::ResizableWindow::backgroundColourId));
-    fileTreeView.setColour (juce::TreeView::selectedItemBackgroundColourId,
-                            juce::Colours::cornflowerblue.withAlpha (0.45f));
-    fileTreeBorder.setText ("Convolve this files: ");
-    fileTreeBorder.setColour (juce::GroupComponent::outlineColourId,
+    fileListModel = std::make_unique<FileListModel> (*this);
+    fileListBox.setModel (fileListModel.get());
+    fileListBox.setMultipleSelectionEnabled (true);
+    fileListBox.setRowHeight (24);
+    fileListBox.setColour (juce::ListBox::backgroundColourId,
+                           findColour (juce::ResizableWindow::backgroundColourId));
+    fileListBorder.setText ("Convolve this files: ");
+    fileListBorder.setColour (juce::GroupComponent::outlineColourId,
                               juce::Colours::grey);
-    fileTreeBorder.setColour (juce::GroupComponent::textColourId,
+    fileListBorder.setColour (juce::GroupComponent::textColourId,
                               juce::Colours::white);
-    addAndMakeVisible (fileTreeBorder);
-    addAndMakeVisible (fileTreeView);
-    fileTreeBorder.toFront (false);
+    addAndMakeVisible (fileListBorder);
+    addAndMakeVisible (fileListBox);
+    fileListBorder.toFront (false);
 
     addButton.onClick = [this]
     {
@@ -214,8 +154,8 @@ MainComponent::MainComponent()
 
 MainComponent::~MainComponent()
 {
-    fileTreeView.setRootItem (nullptr);
-    fileListRootItem.reset();
+    fileListBox.setModel (nullptr);
+    fileListModel.reset();
 }
 
 void MainComponent::paint (juce::Graphics& g)
@@ -237,8 +177,8 @@ void MainComponent::resized()
     auto leftColumn = bounds.removeFromLeft (320);
     auto buttonRow = leftColumn.removeFromBottom (36);
 
-    fileTreeBorder.setBounds (leftColumn);
-    fileTreeView.setBounds (leftColumn.reduced (1).withTrimmedTop (18));
+    fileListBorder.setBounds (leftColumn);
+    fileListBox.setBounds (leftColumn.reduced (1).withTrimmedTop (18));
 
     auto addButtonBounds = buttonRow.removeFromLeft ((buttonRow.getWidth()) / 2);
     addButtonBounds.removeFromLeft(1);
@@ -285,10 +225,10 @@ void MainComponent::addFiles (const juce::Array<juce::File>& filesToAdd)
 {
     for (const auto& file : filesToAdd)
     {
-        if (! file.hasFileExtension ("wav"))
-            continue;
-
-        fileEntries.push_back ({ nextFileId++, file });
+        if (file.hasFileExtension("wav"))
+        {
+            fileEntries.push_back ({ nextFileId++, file });
+        }
     }
 
     refreshFileList();
@@ -296,20 +236,14 @@ void MainComponent::addFiles (const juce::Array<juce::File>& filesToAdd)
 
 void MainComponent::removeSelectedFiles()
 {
-    std::unordered_set<int> selectedIds;
+    auto selectedRows = fileListBox.getSelectedRows();
 
-    for (int i = 0; i < fileTreeView.getNumSelectedItems(); ++i)
-    {
-        if (auto* item = dynamic_cast<FileListItem*> (fileTreeView.getSelectedItem (i)))
-            selectedIds.insert (item->getId());
-    }
-
-    if (selectedIds.empty())
+    if (selectedRows.isEmpty())
         return;
 
-    std::erase_if (fileEntries, [&selectedIds] (const FileEntry& entry)
+    std::erase_if (fileEntries, [selectedRows, row = 0] (const FileEntry&) mutable
     {
-        return selectedIds.find (entry.id) != selectedIds.end();
+        return selectedRows.contains (row++);
     });
 
     refreshFileList();
@@ -317,6 +251,6 @@ void MainComponent::removeSelectedFiles()
 
 void MainComponent::refreshFileList()
 {
-    if (fileListRootItem != nullptr)
-        fileListRootItem->refresh();
+    fileListBox.updateContent();
+    fileListBox.repaint();
 }

@@ -2,7 +2,7 @@
 
 #include <JuceHeader.h>
 
-class FileListRootItem;
+class FileListModel;
 
 class MainComponent : public juce::Component
 {
@@ -20,15 +20,15 @@ private:
         juce::File file;
     };
 
+    friend class FileListModel;
+
     void addFiles (const juce::Array<juce::File>& filesToAdd);
     void removeSelectedFiles();
     void refreshFileList();
 
-    friend class FileListRootItem;
-
-    std::unique_ptr<FileListRootItem> fileListRootItem;
-    juce::GroupComponent fileTreeBorder;
-    juce::TreeView fileTreeView;
+    std::unique_ptr<FileListModel> fileListModel;
+    juce::GroupComponent fileListBorder;
+    juce::ListBox fileListBox;
     juce::TextButton addButton { "Add" };
     juce::TextButton removeButton { "Remove" };
     std::vector<FileEntry> fileEntries;
