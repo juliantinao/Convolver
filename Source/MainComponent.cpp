@@ -19,7 +19,7 @@ public:
             return;
 
         if (selected)
-            g.fillAll (juce::Colours::cornflowerblue.withAlpha (0.45f));
+            g.fillAll (owner.findColour (juce::TextButton::buttonColourId).withAlpha (0.45f));
 
         auto area = juce::Rectangle<int> (0, 0, width, height).reduced (6, 0);
         g.setColour (owner.fileListBox.findColour (juce::Label::textColourId));
@@ -37,6 +37,22 @@ MainComponent::MainComponent()
 {
     setSize (900, 495);
 
+    // Dark mode color scheme
+    auto darkBg = juce::Colour::fromRGB (33, 33, 33);
+    auto panelBg = juce::Colour::fromRGB (28, 28, 28);
+    auto outlineCol = juce::Colour::fromRGB (64, 64, 64);
+    auto controlCol = juce::Colour::fromRGB (45, 45, 45);
+    auto textCol = juce::Colours::white;
+
+    // Apply to this component look-and-feel so child components inherit sensible defaults
+    getLookAndFeel().setColour (juce::ResizableWindow::backgroundColourId, darkBg);
+    getLookAndFeel().setColour (juce::ListBox::backgroundColourId, panelBg);
+    getLookAndFeel().setColour (juce::GroupComponent::outlineColourId, outlineCol);
+    getLookAndFeel().setColour (juce::GroupComponent::textColourId, textCol);
+    getLookAndFeel().setColour (juce::Label::textColourId, textCol);
+    getLookAndFeel().setColour (juce::TextButton::buttonColourId, controlCol);
+    getLookAndFeel().setColour (juce::TextButton::textColourOffId, textCol);
+
     fileListModel = std::make_unique<FileListModel> (*this);
     fileListBox.setModel (fileListModel.get());
     fileListBox.setMultipleSelectionEnabled (true);
@@ -45,9 +61,9 @@ MainComponent::MainComponent()
                            findColour (juce::ResizableWindow::backgroundColourId));
     fileListBorder.setText ("Convolve this files: ");
     fileListBorder.setColour (juce::GroupComponent::outlineColourId,
-                              juce::Colours::grey);
+                              findColour (juce::GroupComponent::outlineColourId));
     fileListBorder.setColour (juce::GroupComponent::textColourId,
-                              juce::Colours::white);
+                              findColour (juce::GroupComponent::textColourId));
     addAndMakeVisible (fileListBorder);
     addAndMakeVisible (fileListBox);
     fileListBorder.toFront (false);
@@ -75,13 +91,13 @@ MainComponent::MainComponent()
 
     convolveFileBorder.setText ("With this file:");
     convolveFileBorder.setColour (juce::GroupComponent::outlineColourId,
-                                  juce::Colours::grey);
+                                  findColour (juce::GroupComponent::outlineColourId));
     convolveFileBorder.setColour (juce::GroupComponent::textColourId,
-                                  juce::Colours::white);
+                                  findColour (juce::GroupComponent::textColourId));
     addAndMakeVisible (convolveFileBorder);
 
     convolveFileLabel.setText ("(no file selected)", juce::dontSendNotification);
-    convolveFileLabel.setColour (juce::Label::textColourId, juce::Colours::white);
+    convolveFileLabel.setColour (juce::Label::textColourId, findColour (juce::Label::textColourId));
     convolveFileLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (convolveFileLabel);
     convolveFileBorder.toFront (false);
@@ -108,13 +124,13 @@ MainComponent::MainComponent()
 
     outputDirBorder.setText ("Output Directory:");
     outputDirBorder.setColour (juce::GroupComponent::outlineColourId,
-                               juce::Colours::grey);
+                               findColour (juce::GroupComponent::outlineColourId));
     outputDirBorder.setColour (juce::GroupComponent::textColourId,
-                               juce::Colours::white);
+                               findColour (juce::GroupComponent::textColourId));
     addAndMakeVisible (outputDirBorder);
 
     outputDirLabel.setText ("(no directory selected)", juce::dontSendNotification);
-    outputDirLabel.setColour (juce::Label::textColourId, juce::Colours::white);
+    outputDirLabel.setColour (juce::Label::textColourId, findColour (juce::Label::textColourId));
     outputDirLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (outputDirLabel);
     outputDirBorder.toFront (false);
