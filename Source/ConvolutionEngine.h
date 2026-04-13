@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 
+#include <functional>
+
 //==============================================================================
 /**
     Performs frequency-domain convolution of a WAV file with an impulse response,
@@ -45,7 +47,8 @@ public:
     static int processBatch (const std::vector<FilePair>& filePairs,
                              const juce::File& irFile,
                              bool maintainRelativeLevels,
-                             juce::StringArray& errors);
+                              juce::StringArray& errors,
+                              std::function<void (double)> progressCallback = {});
 
 private:
     ConvolutionEngine() = delete;

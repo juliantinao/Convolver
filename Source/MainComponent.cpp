@@ -2,6 +2,59 @@
 #include "DarkLookAndFeel.h"
 #include "ConvolutionEngine.h"
 
+class ConvolveButtonLookAndFeel : public DarkLookAndFeel
+{
+public:
+    void drawButtonBackground (juce::Graphics& g,
+                               juce::Button& button,
+                               const juce::Colour& backgroundColour,
+                               bool shouldDrawButtonAsHighlighted,
+                               bool shouldDrawButtonAsDown) override
+    {
+        auto bounds = button.getLocalBounds().toFloat().reduced (1.0f);
+        auto cornerSize = juce::jmin (bounds.getHeight() * 0.5f, 6.0f);
+
+        const bool isProcessing = button.getProperties().getWithDefault ("convolveProcessing", false);
+        const float progress = juce::jlimit (0.0f, 1.0f, (float) button.getProperties().getWithDefault ("convolveProgress", 0.0f));
+
+        auto baseColour = backgroundColour;
+        auto highlightColour = backgroundColour.interpolatedWith (juce::Colours::white, 0.42f);
+
+        g.setColour (baseColour);
+        g.fillRoundedRectangle (bounds, cornerSize);
+
+        if (isProcessing && progress > 0.0f)
+        {
+            auto progressBounds = bounds;
+            progressBounds.setWidth (bounds.getWidth() * progress);
+
+            g.setColour (highlightColour);
+            g.fillRoundedRectangle (progressBounds, cornerSize);
+        }
+
+        if (shouldDrawButtonAsHighlighted || shouldDrawButtonAsDown)
+        {
+            g.setColour (juce::Colours::white.withAlpha (shouldDrawButtonAsDown ? 0.14f : 0.08f));
+            g.fillRoundedRectangle (bounds, cornerSize);
+        }
+
+        g.setColour (button.findColour (juce::GroupComponent::outlineColourId));
+        g.drawRoundedRectangle (bounds, cornerSize, 1.0f);
+    }
+
+    void drawButtonText (juce::Graphics& g,
+                         juce::TextButton& button,
+                         bool shouldDrawButtonAsHighlighted,
+                         bool shouldDrawButtonAsDown) override
+    {
+        juce::ignoreUnused (shouldDrawButtonAsHighlighted, shouldDrawButtonAsDown);
+
+        g.setColour (button.findColour (juce::TextButton::textColourOffId));
+        g.setFont (getTextButtonFont (button, button.getHeight()));
+        g.drawFittedText (button.getButtonText(), button.getLocalBounds(), juce::Justification::centred, 1);
+    }
+};
+
 class FileListModel : public juce::ListBoxModel
 {
 public:
@@ -42,6 +95,8 @@ MainComponent::MainComponent()
     // Use a dedicated LookAndFeel for dark mode
     darkLookAndFeel = std::make_unique<DarkLookAndFeel>();
     setLookAndFeel (darkLookAndFeel.get());
+
+    convolveButtonLookAndFeel = std::make_unique<ConvolveButtonLookAndFeel>();
 
     fileListModel = std::make_unique<FileListModel> (*this);
     fileListBox.setModel (fileListModel.get());
@@ -200,7 +255,6 @@ MainComponent::MainComponent()
         }
 
         auto prefix = prefixEditor.getText();
-        juce::StringArray errors;
 
         std::vector<ConvolutionEngine::FilePair> filePairs;
         filePairs.reserve (fileEntries.size());
@@ -212,34 +266,102 @@ MainComponent::MainComponent()
                                    outputDirectory.getChildFile (outputFileName) });
         }
 
-        bool maintainLevels = maintainLevelToggle.getToggleState();
-        int successCount = ConvolutionEngine::processBatch (filePairs, convolveFile,
-                                                            maintainLevels, errors);
-
-        juce::String message = juce::String (successCount) + " of "
-                             + juce::String (static_cast<int> (fileEntries.size()))
-                             + " files convolved successfully.";
-
-        if (! errors.isEmpty())
-            message += "\n\nErrors:\n" + errors.joinIntoString ("\n");
-
-        juce::AlertWindow::showMessageBoxAsync (
-            errors.isEmpty() ? juce::AlertWindow::InfoIcon : juce::AlertWindow::WarningIcon,
-            "Convolution Complete", message);
+        startConvolutionBatch (std::move (filePairs));
     };
 
     addAndMakeVisible (helpButton);
     addAndMakeVisible (convolveButton);
+    convolveButton.setLookAndFeel (convolveButtonLookAndFeel.get());
+    convolveButton.getProperties().set ("convolveProcessing", false);
+    convolveButton.getProperties().set ("convolveProgress", 0.0f);
 
     refreshFileList();
 }
 
 MainComponent::~MainComponent()
 {
+    if (convolveWorker.joinable())
+        convolveWorker.join();
+
+    convolveButton.setLookAndFeel (nullptr);
     fileListBox.setModel (nullptr);
     fileListModel.reset();
     setLookAndFeel (nullptr);
     darkLookAndFeel.reset();
+    convolveButtonLookAndFeel.reset();
+}
+
+void MainComponent::setConvolveProgress (float progress)
+{
+    auto clampedProgress = juce::jlimit (0.0f, 1.0f, progress);
+    convolveButton.getProperties().set ("convolveProgress", clampedProgress);
+    convolveButton.repaint();
+}
+
+void MainComponent::startConvolutionBatch (std::vector<ConvolutionEngine::FilePair> filePairs)
+{
+    if (convolving.exchange (true))
+        return;
+
+    convolveButton.setEnabled (false);
+    convolveButton.getProperties().set ("convolveProcessing", true);
+    setConvolveProgress (0.0f);
+
+    auto safeThis = juce::Component::SafePointer<MainComponent> (this);
+    auto irFile = convolveFile;
+    auto maintainLevels = maintainLevelToggle.getToggleState();
+
+    convolveWorker = std::jthread ([safeThis,
+                                    filePairs = std::move (filePairs),
+                                    irFile,
+                                    maintainLevels] (std::stop_token)
+    {
+        if (safeThis == nullptr)
+            return;
+
+        juce::StringArray errors;
+
+        auto progressCallback = [safeThis] (double progress)
+        {
+            if (safeThis == nullptr)
+                return;
+
+            juce::MessageManager::callAsync ([safeThis, progress]
+            {
+                if (safeThis == nullptr)
+                    return;
+
+                safeThis->setConvolveProgress ((float) progress);
+            });
+        };
+
+        auto successCount = ConvolutionEngine::processBatch (filePairs, irFile,
+                                                             maintainLevels, errors,
+                                                             progressCallback);
+
+        juce::String message = juce::String (successCount) + " of "
+                             + juce::String (static_cast<int> (filePairs.size()))
+                             + " files convolved successfully.";
+
+        if (! errors.isEmpty())
+            message += "\n\nErrors:\n" + errors.joinIntoString ("\n");
+
+        auto icon = errors.isEmpty() ? juce::AlertWindow::InfoIcon
+                                     : juce::AlertWindow::WarningIcon;
+
+        juce::MessageManager::callAsync ([safeThis, message, icon]
+        {
+            if (safeThis == nullptr)
+                return;
+
+            safeThis->convolving.store (false);
+            safeThis->convolveButton.getProperties().set ("convolveProcessing", false);
+            safeThis->setConvolveProgress (0.0f);
+            safeThis->convolveButton.setEnabled (true);
+
+            juce::AlertWindow::showMessageBoxAsync (icon, "Convolution Complete", message);
+        });
+    });
 }
 
 void MainComponent::paint (juce::Graphics& g)

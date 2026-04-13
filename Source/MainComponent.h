@@ -2,8 +2,14 @@
 
 #include <JuceHeader.h>
 
+#include "ConvolutionEngine.h"
+
+#include <atomic>
+#include <thread>
+
 class FileListModel;
 class DarkLookAndFeel;
+class ConvolveButtonLookAndFeel;
 
 class MainComponent : public juce::Component
 {
@@ -26,9 +32,12 @@ private:
     void addFiles (const juce::Array<juce::File>& filesToAdd);
     void removeSelectedFiles();
     void refreshFileList();
+    void startConvolutionBatch (std::vector<ConvolutionEngine::FilePair> filePairs);
+    void setConvolveProgress (float progress);
 
     std::unique_ptr<FileListModel> fileListModel;
     std::unique_ptr<DarkLookAndFeel> darkLookAndFeel;
+    std::unique_ptr<ConvolveButtonLookAndFeel> convolveButtonLookAndFeel;
     juce::GroupComponent fileListBorder;
     juce::ListBox fileListBox;
     juce::TextButton addButton { "Add" };
@@ -54,6 +63,8 @@ private:
 
     juce::TextButton helpButton { "Help" };
     juce::TextButton convolveButton { "Convolve" };
+    std::atomic<bool> convolving { false };
+    std::jthread convolveWorker;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainComponent)
 };

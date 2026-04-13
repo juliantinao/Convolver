@@ -153,8 +153,17 @@ juce::String ConvolutionEngine::processFile (const juce::File& inputFile,
 int ConvolutionEngine::processBatch (const std::vector<FilePair>& filePairs,
                                      const juce::File& irFile,
                                      bool maintainRelativeLevels,
-                                     juce::StringArray& errors)
+                                     juce::StringArray& errors,
+                                     std::function<void (double)> progressCallback)
 {
+    const auto reportProgress = [&] (double progress)
+    {
+        if (progressCallback)
+            progressCallback (juce::jlimit (0.0, 1.0, progress));
+    };
+
+    reportProgress (0.0);
+
     // Load the IR once for the whole batch
     juce::String irError;
     double irSampleRate = 0.0;
@@ -177,6 +186,8 @@ int ConvolutionEngine::processBatch (const std::vector<FilePair>& filePairs,
     std::vector<ConvolvedResult> results;
     results.reserve (filePairs.size());
     int successCount = 0;
+    int processedInputs = 0;
+    const int totalInputs = juce::jmax (1, static_cast<int> (filePairs.size()));
 
     //--------------------------------------------------------------------------
     // Phase 1: convolve all files into memory buffers
@@ -190,6 +201,8 @@ int ConvolutionEngine::processBatch (const std::vector<FilePair>& filePairs,
         if (inputBuffer.getNumSamples() == 0)
         {
             errors.add (pair.inputFile.getFileName() + ": " + inputError);
+            ++processedInputs;
+            reportProgress (0.5 * (static_cast<double> (processedInputs) / totalInputs));
             continue;
         }
 
@@ -198,6 +211,9 @@ int ConvolutionEngine::processBatch (const std::vector<FilePair>& filePairs,
 
         results.push_back ({ std::move (convolved), inputSampleRate,
                              pair.outputFile, peak });
+
+        ++processedInputs;
+        reportProgress (0.5 * (static_cast<double> (processedInputs) / totalInputs));
     }
 
     //--------------------------------------------------------------------------
@@ -236,6 +252,9 @@ int ConvolutionEngine::processBatch (const std::vector<FilePair>& filePairs,
     //--------------------------------------------------------------------------
     // Phase 3: write all results to disk
     //--------------------------------------------------------------------------
+    int processedWrites = 0;
+    const int totalWrites = juce::jmax (1, static_cast<int> (results.size()));
+
     for (const auto& r : results)
     {
         auto writeError = writeWavFile (r.buffer, r.sampleRate, r.outputFile);
@@ -244,7 +263,11 @@ int ConvolutionEngine::processBatch (const std::vector<FilePair>& filePairs,
             ++successCount;
         else
             errors.add (r.outputFile.getFileName() + ": " + writeError);
+
+        ++processedWrites;
+        reportProgress (0.5 + (0.5 * (static_cast<double> (processedWrites) / totalWrites)));
     }
 
+    reportProgress (1.0);
     return successCount;
 }
