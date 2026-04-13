@@ -49,7 +49,7 @@ MainComponent::MainComponent()
     fileListBox.setRowHeight (24);
     fileListBox.setColour (juce::ListBox::backgroundColourId,
                            findColour (juce::ListBox::backgroundColourId));
-    fileListBorder.setText ("Convolve this files: ");
+    fileListBorder.setText ("Convolve these files: ");
     fileListBorder.setColour (juce::GroupComponent::outlineColourId,
                               findColour (juce::GroupComponent::outlineColourId));
     fileListBorder.setColour (juce::GroupComponent::textColourId,
