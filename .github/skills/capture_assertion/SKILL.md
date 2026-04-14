@@ -1,7 +1,8 @@
-Skill: capture-assertion
-
-Purpose
-- Provide a reproducible, automatable way to run the built Convolver executable and capture any JUCE assertion output into a log file — without requiring a native debugger.
+---
+name: capture-assertion
+description: >
+  Provide a reproducible, automatable way to run the built Convolver executable and capture any JUCE assertion output into a log file — without requiring a native debugger.
+---
 
 How it works
 - The application is built with `JUCE_LOG_ASSERTIONS=1` (set in CMakeLists.txt), which routes assertion messages through `Logger::writeToLog()` instead of `OutputDebugString`.
