@@ -95,6 +95,8 @@ MainComponent::MainComponent()
     // Use a dedicated LookAndFeel for dark mode
     darkLookAndFeel = std::make_unique<DarkLookAndFeel>();
     setLookAndFeel (darkLookAndFeel.get());
+    // Make system modal dialogs (AlertWindow) use the same dark look-and-feel
+    juce::LookAndFeel::setDefaultLookAndFeel (darkLookAndFeel.get());
 
     convolveButtonLookAndFeel = std::make_unique<ConvolveButtonLookAndFeel>();
 
@@ -214,6 +216,7 @@ MainComponent::MainComponent()
                             findColour (juce::Label::textColourId));
     prefixEditor.setColour (juce::TextEditor::outlineColourId,
                             findColour (juce::GroupComponent::outlineColourId));
+    prefixEditor.setText("conv_", juce::dontSendNotification);
     addAndMakeVisible (prefixEditor);
     prefixBorder.toFront (false);
 
@@ -287,6 +290,7 @@ MainComponent::~MainComponent()
     fileListBox.setModel (nullptr);
     fileListModel.reset();
     setLookAndFeel (nullptr);
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
     darkLookAndFeel.reset();
     convolveButtonLookAndFeel.reset();
 }
@@ -370,15 +374,15 @@ void MainComponent::paint (juce::Graphics& g)
 
     g.setFont (juce::FontOptions (20.0f));
     g.setColour (findColour (juce::Label::textColourId));
-    g.drawText ("Convolver Batch WAV Convolution",
-                getLocalBounds().reduced (12, 8), juce::Justification::topLeft, true);
+    g.drawText ("Batch WAV Convolution",
+                getLocalBounds().reduced (15, 20), juce::Justification::topLeft, true);
 }
 
 void MainComponent::resized()
 {
     auto bounds = getLocalBounds().reduced (12);
 
-    bounds.removeFromTop (32);
+    bounds.removeFromTop (40);
 
     auto leftColumn = bounds.removeFromLeft (320);
     auto buttonRow = leftColumn.removeFromBottom (36);

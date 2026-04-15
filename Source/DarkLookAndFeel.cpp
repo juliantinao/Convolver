@@ -16,4 +16,9 @@ DarkLookAndFeel::DarkLookAndFeel()
     setColour (juce::Label::textColourId, textCol);
     setColour (juce::TextButton::buttonColourId, controlCol);
     setColour (juce::TextButton::textColourOffId, textCol);
+    setColour (juce::AlertWindow::backgroundColourId, darkBg);
+    setColour (juce::AlertWindow::textColourId, textCol);
+    setColour (juce::AlertWindow::outlineColourId, outlineCol);
+    setColour (juce::PopupMenu::backgroundColourId, panelBg);
+    setColour (juce::PopupMenu::textColourId, textCol);
 }
