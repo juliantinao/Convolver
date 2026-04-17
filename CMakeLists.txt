@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Convolver VERSION 0.1.0 LANGUAGES CXX)
+project(Convolver VERSION 0.1.0 LANGUAGES C CXX)
 
 # JUCE is expected at C:\JUCE — override with -DJUCE_DIR=<path> if needed
 set(JUCE_DIR "C:/JUCE" CACHE PATH "Path to the JUCE framework")

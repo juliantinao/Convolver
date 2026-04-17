@@ -41,6 +41,41 @@
         "rhs": "Windows"
       }
     }
+    ,
+    {
+      "name": "linux-debug-wsl",
+      "displayName": "Linux Debug (WSL)",
+      "description": "WSL Ninja Debug configuration",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "cacheVariables": {
+        "JUCE_DIR": "/home/djuli/JUCE",
+        "CMAKE_BUILD_TYPE": "Debug"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-release-wsl",
+      "displayName": "Linux Release (WSL)",
+      "description": "WSL Ninja Release configuration",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "cacheVariables": {
+        "JUCE_DIR": "/home/djuli/JUCE",
+        "CMAKE_BUILD_TYPE": "Release"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    }
   ],
   "buildPresets": [
     {
@@ -53,6 +88,19 @@
       "name": "x64-release",
       "configurePreset": "x64-release",
       "displayName": "x64 Release",
+      "configuration": "Release"
+    }
+    ,
+    {
+      "name": "linux-debug-wsl",
+      "configurePreset": "linux-debug-wsl",
+      "displayName": "Linux Debug (WSL)",
+      "configuration": "Debug"
+    },
+    {
+      "name": "linux-release-wsl",
+      "configurePreset": "linux-release-wsl",
+      "displayName": "Linux Release (WSL)",
       "configuration": "Release"
     }
   ]
