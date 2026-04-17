@@ -50,18 +50,21 @@ public:
                                   .findColour (ResizableWindow::backgroundColourId),
                               DocumentWindow::allButtons)
         {
+            auto* mainComponent = new MainComponent();
+
             setUsingNativeTitleBar (true);
-            setContentOwned (new MainComponent(), true);
+            setContentOwned (mainComponent, true);
 
            #if JUCE_IOS || JUCE_ANDROID
             setFullScreen (true);
            #else
-            setResizable (true, true);
-            if (auto* content = getContentComponent())
-            {
-                setResizeLimits (content->getWidth(), content->getHeight(), 10000, 10000);
-                centreWithSize (content->getWidth(), content->getHeight());
-            }
+            const auto contentBounds = mainComponent->getLocalBounds();
+            const auto minWidth = contentBounds.getWidth();
+            const auto minHeight = contentBounds.getHeight();
+
+            setResizable (true, false);
+            setResizeLimits (minWidth, minHeight, 10000, 10000);
+            centreWithSize (minWidth, minHeight);
            #endif
 
             // On Windows, request the native titlebar to use the system dark theme
@@ -76,11 +79,17 @@ public:
             }
            #endif
 
-            setIcon (createAppIcon());
-            if (auto* peer = getPeer())
-                peer->setIcon (createAppIcon());
+            const auto appIcon = createAppIcon();
+            setIcon (appIcon);
 
             setVisible (true);
+
+            if (auto* peer = getPeer())
+                peer->setIcon (appIcon);
+
+           #if ! (JUCE_IOS || JUCE_ANDROID)
+            setResizeLimits (minWidth, minHeight, 10000, 10000);
+           #endif
         }
 
         void closeButtonPressed() override
