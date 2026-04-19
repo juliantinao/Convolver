@@ -1,11 +1,11 @@
+#include "AppIcon.h"
+#include "MainComponent.h"
 #include <JuceHeader.h>
 #if JUCE_WINDOWS
 # include <windows.h>
 # include <dwmapi.h>
 # pragma comment(lib, "dwmapi.lib")
 #endif
-#include "MainComponent.h"
-#include "AppIcon.h"
 
 class ConvolverApplication : public juce::JUCEApplication
 {
@@ -18,7 +18,7 @@ public:
         juce::Logger::setCurrentLogger (fileLogger.get());
     }
 
-    const juce::String getApplicationName() override    { return ProjectInfo::projectName; }
+    const juce::String getApplicationName() override { return ProjectInfo::projectName; }
     const juce::String getApplicationVersion() override { return ProjectInfo::versionString; }
     bool moreThanOneInstanceAllowed() override           { return true; }
 

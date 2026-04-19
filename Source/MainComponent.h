@@ -1,8 +1,7 @@
 #pragma once
+#include "ConvolutionEngine.h"
 
 #include <JuceHeader.h>
-
-#include "ConvolutionEngine.h"
 
 #include <atomic>
 #include <thread>

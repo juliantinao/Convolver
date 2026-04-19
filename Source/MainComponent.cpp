@@ -1,6 +1,6 @@
-#include "MainComponent.h"
 #include "DarkLookAndFeel.h"
 #include "ConvolutionEngine.h"
+#include "MainComponent.h"
 
 class ConvolveButtonLookAndFeel : public DarkLookAndFeel
 {

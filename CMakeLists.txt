@@ -20,7 +20,15 @@ juce_generate_juce_header(Convolver)
 # Ensure the generated header is visible to the target and to IDE/intellisense.
 # The generated `JuceHeader.h` is created in the build directory, so add the
 # build tree to the target's include directories for the build-context.
-target_include_directories(Convolver PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
+target_include_directories(Convolver PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/JUCE>
+)
+
+# The JUCE CMake helpers (juce_generate_juce_header) already add the correct
+# include directory for JuceHeader.h to the target.  A previous GLOB_RECURSE
+# workaround was removed because it could pick up headers from other build
+# directories (e.g. WSL builds) and confuse IntelliSense.
 
 # Source files
 target_sources(Convolver PRIVATE

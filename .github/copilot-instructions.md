@@ -12,7 +12,6 @@ Build system
   cmake -B build -G "Visual Studio 18 2026" -A x64
   cmake --build build --config Debug
   ```
-- Or open the repo folder in Visual Studio as a CMake project (File → Open → CMake…).
 
 Running (default)
 - The recommended, default way to run the application and capture JUCE assertions is the provided runner script `tools/agent/run_capture_assertions.ps1`.
