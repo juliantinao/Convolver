@@ -17,18 +17,12 @@ juce_add_gui_app(Convolver
 # Generate JuceHeader.h for convenient single-include
 juce_generate_juce_header(Convolver)
 
-# Ensure the generated header is visible to the target and to IDE/intellisense.
-# The generated `JuceHeader.h` is created in the build directory, so add the
-# build tree to the target's include directories for the build-context.
+# Make project headers (MainComponent.h, DarkLookAndFeel.h, etc.) resolvable
+# from any build configuration.  JuceHeader.h is already handled by
+# juce_generate_juce_header() above.
 target_include_directories(Convolver PRIVATE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/JUCE>
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source
 )
-
-# The JUCE CMake helpers (juce_generate_juce_header) already add the correct
-# include directory for JuceHeader.h to the target.  A previous GLOB_RECURSE
-# workaround was removed because it could pick up headers from other build
-# directories (e.g. WSL builds) and confuse IntelliSense.
 
 # Source files
 target_sources(Convolver PRIVATE

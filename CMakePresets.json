@@ -15,10 +15,10 @@
       "cacheVariables": {
         "JUCE_DIR": "C:/JUCE"
       },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "hostOS": [ "Windows" ]
+        }
       }
     },
     {
@@ -35,13 +35,12 @@
       "cacheVariables": {
         "JUCE_DIR": "C:/JUCE"
       },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "hostOS": [ "Windows" ]
+        }
       }
-    }
-    ,
+    },
     {
       "name": "linux-debug-wsl",
       "displayName": "Linux Debug (WSL)",
@@ -49,11 +48,6 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/out/build/${presetName}",
       "installDir": "${sourceDir}/out/install/${presetName}",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      },
       "cacheVariables": {
         "JUCE_DIR": "/home/djuli/JUCE",
         "CMAKE_BUILD_TYPE": "Debug",
@@ -63,6 +57,11 @@
       },
       "environment": {
         "WSL_DISTRIBUTION": "Ubuntu"
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "hostOS": [ "Linux" ]
+        }
       }
     },
     {
@@ -72,11 +71,6 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/out/build/${presetName}",
       "installDir": "${sourceDir}/out/install/${presetName}",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      },
       "cacheVariables": {
         "JUCE_DIR": "/home/djuli/JUCE",
         "CMAKE_BUILD_TYPE": "Release",
@@ -86,6 +80,11 @@
       },
       "environment": {
         "WSL_DISTRIBUTION": "Ubuntu"
+      },
+      "vendor": {
+        "microsoft.com/VisualStudioSettings/CMake/1.0": {
+          "hostOS": [ "Linux" ]
+        }
       }
     }
   ],
@@ -101,8 +100,7 @@
       "configurePreset": "x64-release",
       "displayName": "x64 Release",
       "configuration": "Release"
-    }
-    ,
+    },
     {
       "name": "linux-debug-wsl",
       "configurePreset": "linux-debug-wsl",
