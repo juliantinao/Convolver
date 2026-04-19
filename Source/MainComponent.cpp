@@ -1,5 +1,6 @@
 #include "DarkLookAndFeel.h"
 #include "ConvolutionEngine.h"
+#include "HelpWindow.h"
 #include "MainComponent.h"
 
 class FileListModel : public juce::ListBoxModel
@@ -176,9 +177,7 @@ MainComponent::MainComponent()
 
     helpButton.onClick = [this]
     {
-        juce::AlertWindow::showMessageBoxAsync (juce::AlertWindow::InfoIcon,
-                                                "Help",
-                                                "Select an impulse response, choose output directory, set a filename prefix, add WAV files and press Convolve.");
+        showHelpWindow();
     };
 
     convolveButton.onClick = [this]
@@ -233,6 +232,7 @@ MainComponent::~MainComponent()
     if (convolveWorker.joinable())
         convolveWorker.join();
 
+    helpWindow.reset();
     convolveButton.setLookAndFeel (nullptr);
     fileListBox.setModel (nullptr);
     fileListModel.reset();
@@ -247,6 +247,16 @@ void MainComponent::setConvolveProgress (float progress)
     auto clampedProgress = juce::jlimit (0.0f, 1.0f, progress);
     convolveButton.getProperties().set ("convolveProgress", clampedProgress);
     convolveButton.repaint();
+}
+
+void MainComponent::showHelpWindow()
+{
+    if (helpWindow == nullptr)
+        helpWindow = std::make_unique<HelpWindow> (this);
+
+    helpWindow->setMinimised (false);
+    helpWindow->setVisible (true);
+    helpWindow->toFront (true);
 }
 
 void MainComponent::startConvolutionBatch (std::vector<ConvolutionEngine::FilePair> filePairs)
@@ -321,7 +331,7 @@ void MainComponent::paint (juce::Graphics& g)
 
     g.setFont (juce::FontOptions (20.0f));
     g.setColour (findColour (juce::Label::textColourId));
-    g.drawText ("Batch WAV Convolution",
+    g.drawText ("Batch WAV Convolution Engine",
                 getLocalBounds().reduced (15, 20), juce::Justification::topLeft, true);
 }
 

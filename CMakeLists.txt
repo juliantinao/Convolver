@@ -28,6 +28,7 @@ target_include_directories(Convolver PRIVATE
 target_sources(Convolver PRIVATE
     Source/Main.cpp
     Source/MainComponent.cpp
+    Source/HelpWindow.cpp
     # Dark look-and-feel implementation
     Source/DarkLookAndFeel.cpp
     # Frequency-domain convolution engine

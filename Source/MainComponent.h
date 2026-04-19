@@ -9,6 +9,7 @@
 class FileListModel;
 class DarkLookAndFeel;
 class ConvolveButtonLookAndFeel;
+class HelpWindow;
 
 class MainComponent : public juce::Component
 {
@@ -33,6 +34,7 @@ private:
     void refreshFileList();
     void startConvolutionBatch (std::vector<ConvolutionEngine::FilePair> filePairs);
     void setConvolveProgress (float progress);
+    void showHelpWindow();
 
     std::unique_ptr<FileListModel> fileListModel;
     std::unique_ptr<DarkLookAndFeel> darkLookAndFeel;
@@ -62,6 +64,7 @@ private:
 
     juce::TextButton helpButton { "Help" };
     juce::TextButton convolveButton { "Convolve" };
+    std::unique_ptr<HelpWindow> helpWindow;
     std::atomic<bool> convolving { false };
     std::jthread convolveWorker;
 

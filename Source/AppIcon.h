@@ -15,7 +15,7 @@ inline juce::Image createAppIcon()
 
     // Draw a small waveform symbol
     juce::Path wave;
-    const float cx = size * 0.5f;
+    //const float cx = size * 0.5f;
     const float cy = size * 0.5f;
     const float amp = size * 0.25f;
     const int steps = 40;
