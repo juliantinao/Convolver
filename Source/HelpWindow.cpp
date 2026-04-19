@@ -1,4 +1,10 @@
+#include "AppIcon.h"
 #include "HelpWindow.h"
+#if JUCE_WINDOWS
+# include <windows.h>
+# include <dwmapi.h>
+# pragma comment(lib, "dwmapi.lib")
+#endif
 
 namespace
 {
@@ -139,10 +145,31 @@ HelpWindow::HelpWindow (juce::Component* ownerComponent)
     setContentOwned (new HelpContentComponent(), true);
     setSize (780, 680);
 
+    const auto appIcon = createAppIcon();
+    setIcon (appIcon);
+
     if (owner != nullptr)
         centreAroundComponent (owner.getComponent(), getWidth(), getHeight());
     else
         centreWithSize (getWidth(), getHeight());
+
+#if JUCE_WINDOWS
+    // Show the window so a native handle is created, then request the native titlebar
+    // to use the system dark theme like the main window.
+    setVisible (true);
+    if (auto* peer = getPeer())
+        peer->setIcon (appIcon);
+
+    if (auto* hwnd = static_cast<HWND> (getWindowHandle()))
+    {
+        BOOL useDark = TRUE;
+        HRESULT hr = DwmSetWindowAttribute (hwnd, 20, &useDark, sizeof (useDark));
+        if (FAILED (hr))
+            DwmSetWindowAttribute (hwnd, 19, &useDark, sizeof (useDark));
+    }
+#else
+    setVisible (true);
+#endif
 }
 
 void HelpWindow::closeButtonPressed()
