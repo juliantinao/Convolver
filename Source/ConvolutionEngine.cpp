@@ -1,10 +1,33 @@
 #include "ConvolutionEngine.h"
 
+namespace
+{
+struct LoadedWavFile
+{
+    juce::AudioBuffer<float> buffer;
+    double sampleRate = 0.0;
+    int bitsPerSample = 16;
+};
+
+static int sanitiseWavBitsPerSample (int bitsPerSample)
+{
+    if (bitsPerSample <= 8)
+        return 8;
+
+    if (bitsPerSample <= 16)
+        return 16;
+
+    if (bitsPerSample <= 24)
+        return 24;
+
+    return 32;
+}
+}
+
 //==============================================================================
 // Helper: load a WAV file into an AudioBuffer (returns empty buffer on failure).
-static juce::AudioBuffer<float> loadWavFile (const juce::File& file,
-                                             double& sampleRateOut,
-                                             juce::String& errorOut)
+static LoadedWavFile loadWavFile (const juce::File& file,
+                                  juce::String& errorOut)
 {
     juce::AudioFormatManager formatManager;
     formatManager.registerBasicFormats();
@@ -17,12 +40,13 @@ static juce::AudioBuffer<float> loadWavFile (const juce::File& file,
         return {};
     }
 
-    sampleRateOut = reader->sampleRate;
-
-    juce::AudioBuffer<float> buffer (static_cast<int> (reader->numChannels),
-                                     static_cast<int> (reader->lengthInSamples));
-    reader->read (&buffer, 0, static_cast<int> (reader->lengthInSamples), 0, true, true);
-    return buffer;
+    LoadedWavFile loadedFile;
+    loadedFile.sampleRate = reader->sampleRate;
+    loadedFile.bitsPerSample = sanitiseWavBitsPerSample (reader->bitsPerSample);
+    loadedFile.buffer.setSize (static_cast<int> (reader->numChannels),
+                               static_cast<int> (reader->lengthInSamples));
+    reader->read (&loadedFile.buffer, 0, static_cast<int> (reader->lengthInSamples), 0, true, true);
+    return loadedFile;
 }
 
 //==============================================================================
@@ -108,6 +132,7 @@ static float getPeakLevel (const juce::AudioBuffer<float>& buffer)
 // Helper: write an AudioBuffer to a WAV file.
 static juce::String writeWavFile (const juce::AudioBuffer<float>& buffer,
                                   double sampleRate,
+                                  int bitsPerSample,
                                   const juce::File& outputFile)
 {
     if (outputFile.exists())
@@ -122,7 +147,7 @@ static juce::String writeWavFile (const juce::AudioBuffer<float>& buffer,
     auto writerOptions = juce::AudioFormatWriterOptions()
                              .withSampleRate (sampleRate)
                              .withNumChannels (buffer.getNumChannels())
-                             .withBitsPerSample (16);
+                             .withBitsPerSample (sanitiseWavBitsPerSample (bitsPerSample));
 
     auto writer = wavFormat.createWriterFor (fileStream, writerOptions);
 
@@ -166,10 +191,9 @@ int ConvolutionEngine::processBatch (const std::vector<FilePair>& filePairs,
 
     // Load the IR once for the whole batch
     juce::String irError;
-    double irSampleRate = 0.0;
-    auto irBuffer = loadWavFile (irFile, irSampleRate, irError);
+    auto irData = loadWavFile (irFile, irError);
 
-    if (irBuffer.getNumSamples() == 0)
+    if (irData.buffer.getNumSamples() == 0)
     {
         errors.add ("IR: " + irError);
         return 0;
@@ -179,6 +203,7 @@ int ConvolutionEngine::processBatch (const std::vector<FilePair>& filePairs,
     {
         juce::AudioBuffer<float> buffer;
         double sampleRate = 0.0;
+        int bitsPerSample = 16;
         juce::File outputFile;
         float peakLevel = 0.0f;
     };
@@ -195,10 +220,9 @@ int ConvolutionEngine::processBatch (const std::vector<FilePair>& filePairs,
     for (const auto& pair : filePairs)
     {
         juce::String inputError;
-        double inputSampleRate = 0.0;
-        auto inputBuffer = loadWavFile (pair.inputFile, inputSampleRate, inputError);
+        auto inputData = loadWavFile (pair.inputFile, inputError);
 
-        if (inputBuffer.getNumSamples() == 0)
+        if (inputData.buffer.getNumSamples() == 0)
         {
             errors.add (pair.inputFile.getFileName() + ": " + inputError);
             ++processedInputs;
@@ -206,10 +230,11 @@ int ConvolutionEngine::processBatch (const std::vector<FilePair>& filePairs,
             continue;
         }
 
-        auto convolved = convolveBuffers (inputBuffer, irBuffer);
+        auto convolved = convolveBuffers (inputData.buffer, irData.buffer);
         float peak = getPeakLevel (convolved);
 
-        results.push_back ({ std::move (convolved), inputSampleRate,
+        results.push_back ({ std::move (convolved), inputData.sampleRate,
+                             inputData.bitsPerSample,
                              pair.outputFile, peak });
 
         ++processedInputs;
@@ -257,7 +282,7 @@ int ConvolutionEngine::processBatch (const std::vector<FilePair>& filePairs,
 
     for (const auto& r : results)
     {
-        auto writeError = writeWavFile (r.buffer, r.sampleRate, r.outputFile);
+        auto writeError = writeWavFile (r.buffer, r.sampleRate, r.bitsPerSample, r.outputFile);
 
         if (writeError.isEmpty())
             ++successCount;
