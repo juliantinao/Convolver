@@ -36,6 +36,13 @@ target_sources(Convolver PRIVATE
 
 target_compile_features(Convolver PRIVATE cxx_std_20)
 
+# Statically link the MSVC runtime so the .exe doesn't need
+# msvcp140.dll / vcruntime140.dll on the target machine.
+if(MSVC)
+    set_property(TARGET Convolver PROPERTY MSVC_RUNTIME_LIBRARY
+        "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 # Preprocessor definitions required by JUCE
 target_compile_definitions(Convolver PRIVATE
     JUCE_WEB_BROWSER=0
