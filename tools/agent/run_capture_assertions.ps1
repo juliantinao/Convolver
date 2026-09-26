@@ -53,18 +53,30 @@ if (-not $exeFull) {
 }
 
 $exeDir  = Split-Path -Parent $exeFull
-$runtimeLog = Join-Path $exeDir "convolver_runtime.log"
+
+# Source/Main.cpp writes convolver_runtime.log next to the executable when that
+# directory is writable, and otherwise falls back to %APPDATA%\Convolver. A dev
+# build lands in the first location; an installed build cannot write beside its
+# own .exe, so it lands in the second. Check both, preferring the first.
+$runtimeLogCandidates = @(
+    (Join-Path $exeDir "convolver_runtime.log"),
+    (Join-Path $env:APPDATA "Convolver\convolver_runtime.log")
+)
+$runtimeLog = $runtimeLogCandidates[0]
 
 Write-Output "=== Convolver Assertion Capture ==="
 Write-Output "Exe      : $exeFull"
 Write-Output "Runtime log: $runtimeLog"
+Write-Output "  fallback : $($runtimeLogCandidates[1])"
 Write-Output "Timeout  : ${TimeoutSeconds}s"
 Write-Output ""
 
-# ── Clear previous runtime log ───────────────────────────────────────────────
-if (Test-Path $runtimeLog) {
-    Remove-Item $runtimeLog -Force -ErrorAction SilentlyContinue
-    Write-Output "Cleared previous runtime log."
+# ── Clear previous runtime logs ──────────────────────────────────────────────
+foreach ($candidate in $runtimeLogCandidates) {
+    if (Test-Path $candidate) {
+        Remove-Item $candidate -Force -ErrorAction SilentlyContinue
+        Write-Output "Cleared previous runtime log: $candidate"
+    }
 }
 
 # ── Locate cdb.exe (optional, for enhanced debugging) ────────────────────────
@@ -171,7 +183,10 @@ g
 Write-Output ""
 Write-Output "=== Runtime Log Analysis ==="
 
-if (Test-Path $runtimeLog) {
+# Whichever of the two locations the app actually used during this run.
+$runtimeLog = $runtimeLogCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if ($runtimeLog) {
     $logContent = Get-Content $runtimeLog -Raw -ErrorAction SilentlyContinue
     $logLines   = Get-Content $runtimeLog -ErrorAction SilentlyContinue
 
@@ -210,7 +225,8 @@ if (Test-Path $runtimeLog) {
     Write-Output $logContent
     Write-Output "--- End runtime log ---"
 } else {
-    Write-Output "WARNING: Runtime log not found at $runtimeLog"
+    Write-Output "WARNING: Runtime log not found in either location:"
+    foreach ($candidate in $runtimeLogCandidates) { Write-Output "  - $candidate" }
     Write-Output "  The app may have crashed before initialising the FileLogger,"
     Write-Output "  or the build does not include JUCE_LOG_ASSERTIONS=1."
 

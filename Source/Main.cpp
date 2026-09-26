@@ -12,9 +12,37 @@ class ConvolverApplication : public juce::JUCEApplication
 public:
     ConvolverApplication()
     {
-        auto exeFile = juce::File::getSpecialLocation (juce::File::currentExecutableFile);
-        auto logFile = exeFile.getParentDirectory().getChildFile ("convolver_runtime.log");
-        fileLogger = std::make_unique<juce::FileLogger> (logFile, "Convolver Runtime Log", 0);
+        // The log has to live somewhere writable, because JUCE_LOG_ASSERTIONS
+        // routes assertion failures through the logger (see CMakeLists.txt). If
+        // the logger cannot create its file, every assertion becomes a silent
+        // no-op and the app loses all diagnostic output.
+        //
+        // Next to the executable is the most convenient location while
+        // developing, and it is what tools/agent/run_capture_assertions.ps1
+        // looks for. That directory is read-only in a real installation,
+        // though: the installer puts the app under C:\Program Files\Convolver or
+        // %LOCALAPPDATA%\Programs\Convolver, neither of which an unelevated
+        // process can write to.
+        //
+        // So: prefer the executable's own directory, and fall back to the
+        // per-user application data folder when it cannot be written to.
+        auto exeDirectory = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+                                .getParentDirectory();
+
+        if (exeDirectory.hasWriteAccess())
+        {
+            fileLogger = std::make_unique<juce::FileLogger> (
+                exeDirectory.getChildFile ("convolver_runtime.log"),
+                "Convolver Runtime Log", 0);
+        }
+        else
+        {
+            // Resolves to %APPDATA%\Convolver\convolver_runtime.log on Windows,
+            // which is writable and per-user by design.
+            fileLogger.reset (juce::FileLogger::createDefaultAppLogger (
+                "Convolver", "convolver_runtime.log", "Convolver Runtime Log"));
+        }
+
         juce::Logger::setCurrentLogger (fileLogger.get());
     }
 

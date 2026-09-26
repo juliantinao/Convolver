@@ -6,11 +6,26 @@ project(Convolver VERSION 0.1.0 LANGUAGES C CXX)
 set(JUCE_DIR "C:/JUCE" CACHE PATH "Path to the JUCE framework")
 add_subdirectory(${JUCE_DIR} "${CMAKE_CURRENT_BINARY_DIR}/JUCE")
 
-# Standalone GUI application
+# Standalone GUI application.
+#
+# The version is declared exactly once, on the project() line at the top of this
+# file. juce_add_gui_app writes it into the executable's VERSIONINFO resource
+# (FileVersion and ProductVersion), and tools/dist/build-installer.ps1 reads it
+# back out of the built binary, so the installer script never declares it again.
+# Change the version in one place, rebuild, and everything downstream follows.
+#
+# ICON_BIG points at the same PNG that juce_add_binary_data embeds below, so the
+# file icon Windows shows in Explorer and the window/taskbar icons drawn by
+# Source/AppIcon.h are guaranteed to come from one piece of artwork.
+# ICON_BIG takes the raster master: juceaide cannot build a Windows .ico from an
+# SVG (see the comment on juce_add_binary_data below). The SVG of the same
+# artwork is what the runtime icons use.
 juce_add_gui_app(Convolver
     PRODUCT_NAME       "Convolver"
     COMPANY_NAME       "JulianTinao"
-    VERSION            "0.1.0"
+    COMPANY_COPYRIGHT  "(C) 2026 JulianTinao"
+    VERSION            "${PROJECT_VERSION}"
+    ICON_BIG           "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icon/appicon.png"
     NEEDS_CURL         FALSE
     NEEDS_WEB_BROWSER  FALSE)
 
@@ -38,9 +53,17 @@ target_compile_features(Convolver PRIVATE cxx_std_20)
 
 # Statically link the MSVC runtime so the .exe doesn't need
 # msvcp140.dll / vcruntime140.dll on the target machine.
+#
+# This has to be applied to every static library we build ourselves, not just to
+# the executable. juce_add_binary_data below creates an independent target, and
+# a target left at the CMake default uses the DLL runtime (/MDd, /MD) while
+# Convolver uses the static one (/MTd, /MT). The linker then pulls in two
+# different C runtimes and reports LNK4098 - which is not merely a noisy
+# warning: a binary with two CRTs linked in has undefined behaviour.
 if(MSVC)
+    set(CONVOLVER_MSVC_RUNTIME "MultiThreaded$<$<CONFIG:Debug>:Debug>")
     set_property(TARGET Convolver PROPERTY MSVC_RUNTIME_LIBRARY
-        "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        "${CONVOLVER_MSVC_RUNTIME}")
 endif()
 
 # Preprocessor definitions required by JUCE
@@ -50,6 +73,36 @@ target_compile_definitions(Convolver PRIVATE
     JUCE_LOG_ASSERTIONS=1
     JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:Convolver,JUCE_PRODUCT_NAME>"
     JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:Convolver,JUCE_VERSION>")
+
+# Application artwork, embedded as binary data.
+#
+# Note that this embeds the *SVG*, while ICON_BIG above takes the *PNG*. That
+# split is deliberate, not an oversight:
+#
+#   * juce_add_binary_data feeds the runtime window/taskbar/dialog icons. Those
+#     want vector, so Source/AppIcon.h can rasterise the artwork natively at
+#     whatever size each surface needs instead of downscaling a bitmap.
+#   * ICON_BIG cannot take an SVG at all: juceaide resolves it to a
+#     DrawableComposite, which never calls Component::setBounds(), so its
+#     getWidth() reads 0 and every requested icon size is discarded, leaving an
+#     empty .ico.
+#
+# Both files are produced together by tools/icons/make-app-icon.ps1 from one
+# geometry definition, so they cannot drift apart.
+#
+# The header is named explicitly rather than left as the default "BinaryData.h"
+# so a future second binary-data target cannot create an ambiguous include.
+juce_add_binary_data(ConvolverAssets
+    HEADER_NAME "ConvolverAssets.h"
+    NAMESPACE   "ConvolverAssets"
+    SOURCES     packaging/icon/appicon.svg)
+
+# Same static runtime as Convolver above; see the comment there for why leaving
+# this target at the default produces LNK4098.
+if(MSVC)
+    set_property(TARGET ConvolverAssets PROPERTY MSVC_RUNTIME_LIBRARY
+        "${CONVOLVER_MSVC_RUNTIME}")
+endif()
 
 # Link the JUCE modules needed for batch WAV convolution
 #   juce_core            — File I/O, threading, containers
@@ -64,6 +117,7 @@ target_compile_definitions(Convolver PRIVATE
 #   juce_audio_utils     — AudioAppComponent, AudioDeviceSelector
 #   juce_dsp             — FFT, Convolution, windowing functions
 target_link_libraries(Convolver PRIVATE
+    ConvolverAssets
     juce::juce_core
     juce::juce_events
     juce::juce_data_structures

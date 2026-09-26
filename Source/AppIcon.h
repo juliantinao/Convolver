@@ -1,37 +1,55 @@
-// Small programmatic application icon for title bar
+// Application artwork for the window, taskbar and dialog icons.
+//
+// The artwork is embedded as an SVG (packaging/icon/appicon.svg) through
+// juce_add_binary_data, and rasterised here at whatever size the caller asks
+// for.
+//
+// Vector matters at these sizes. Windows renders the taskbar button from a
+// 16x16 icon and the title bar from a 32x32 one, and JUCE hands Windows a
+// single HICON that it uses for both ICON_BIG and ICON_SMALL
+// (juce_Windowing_windows.cpp), so the bitmap we return is what gets downscaled
+// for the taskbar. Rendering the geometry natively at 16 keeps that icon crisp;
+// resampling a 512px bitmap down to 16 in one step leaves the disc's edge
+// ragged and the waveform stroke mushy.
+//
+// ICON_BIG in CMakeLists.txt consumes a PNG rather than this SVG, because
+// juceaide cannot build a Windows .ico out of an SVG. Both files are generated
+// from one geometry definition by tools/icons/make-app-icon.ps1, so the .exe
+// icon and the in-app icons cannot disagree.
 #pragma once
 
+#include <ConvolverAssets.h>
 #include <JuceHeader.h>
 
-inline juce::Image createAppIcon()
+/** Returns the application icon rasterised as a square image of the given size.
+
+    Windows asks for several sizes depending on where the icon is shown - 16 for
+    the taskbar, 32 for the title bar and Alt-Tab, 256 for large Explorer views
+    - so callers pass what they actually need. Because the source artwork is
+    vector, every size is rendered natively rather than resampled.
+
+    @param size  Edge length in pixels. Must be positive; the default of 32
+                 matches the title bar and taskbar use in Main.cpp and
+                 HelpWindow.cpp.
+*/
+inline juce::Image createAppIcon (int size = 32)
 {
-    const int size = 32;
-    juce::Image img (juce::Image::ARGB, size, size, true);
-    juce::Graphics g (img);
+    // Parsed once and cached. The SVG is embedded in the executable, so this
+    // never touches the disk.
+    static const std::unique_ptr<juce::Drawable> artwork =
+        juce::Drawable::createFromImageData (ConvolverAssets::appicon_svg,
+                                             (size_t) ConvolverAssets::appicon_svgSize);
 
-    // Background circle
-    g.setColour (juce::Colour (0xff3a3a5c));
-    g.fillEllipse (0.0f, 0.0f, (float) size, (float) size);
+    if (artwork == nullptr || size <= 0)
+        return {};
 
-    // Draw a small waveform symbol
-    juce::Path wave;
-    //const float cx = size * 0.5f;
-    const float cy = size * 0.5f;
-    const float amp = size * 0.25f;
-    const int steps = 40;
+    juce::Image image (juce::Image::ARGB, size, size, true);
+    juce::Graphics g (image);
 
-    wave.startNewSubPath (size * 0.15f, cy);
-    for (int i = 1; i <= steps; ++i)
-    {
-        float t = (float) i / (float) steps;
-        float x = size * 0.15f + t * size * 0.7f;
-        float envelope = std::sin (t * juce::MathConstants<float>::pi);
-        float y = cy + std::sin (t * juce::MathConstants<float>::twoPi * 3.0f) * amp * envelope;
-        wave.lineTo (x, y);
-    }
+    // drawWithin scales the vector to fill the square; the renderer anti-aliases
+    // the geometry at exactly this resolution.
+    artwork->drawWithin (g, image.getBounds().toFloat(),
+                         juce::RectanglePlacement::centred, 1.0f);
 
-    g.setColour (juce::Colours::white);
-    g.strokePath (wave, juce::PathStrokeType (1.8f));
-
-    return img;
+    return image;
 }
