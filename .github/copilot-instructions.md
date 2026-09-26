@@ -95,7 +95,18 @@ Automation runtime warnings
 
 Documentation & existing guidance
 - Algorithmic reference: `Docs/farina_algorithm_coding_reference.md` — describes the Farina ESS pipeline. This project focuses on the **convolution steps** (Phase C: deconvolution via frequency-domain multiply, and general-purpose WAV convolution).
+- Distribution/trust reference: `Docs/windows_trust_and_distribution.md` — why Windows blocks the unsigned `Convolver.exe` on other PCs (SmartScreen / MOTW vs. UAC vs. Defender vs. Smart App Control), which certificate options are actually worth paying for, and the free distribution paths. Read this before proposing any signing or packaging work.
 - JUCE documentation: https://docs.juce.com/master/index.html
+
+Distribution & Windows trust
+- Helper script: `tools/dist/unblock-distribution.ps1`. Removes the Mark-of-the-Web (`Zone.Identifier`) from a distribution folder so SmartScreen stops prompting, and reports SmartScreen / Smart App Control / Defender / Authenticode state. Always run it with `-CheckOnly` first:
+  ```powershell
+  .\tools\dist\unblock-distribution.ps1 -CheckOnly
+  .\tools\dist\unblock-distribution.ps1 -Path "D:\Convolver-0.1.0-win64"
+  ```
+- Never sign releases with a self-signed certificate as a "fix" for SmartScreen — Microsoft documents it as behaving identically to no signature. The only free route to zero warnings is a Microsoft Store MSIX submission.
+- When a user reports a Windows block, identify which of the four mechanisms is acting before suggesting a fix; they have completely different remedies. See `Docs/windows_trust_and_distribution.md` §1.
+- Never distribute `build\Convolver_artefacts\Debug\Convolver.exe`; use the `Release` build.
 
 Other AI/assistant configs checked
 - No CONTRIBUTING.md present.
@@ -114,6 +125,7 @@ Maintaining this file
   - CMake configuration changes (update build examples).
   - Tests or lint tooling are added (document runner and single-test commands).
   - tools\agent/ scripts change (update examples and log paths).
+  - tools\dist/ scripts or the distribution/trust story change (update the Distribution & Windows trust section).
 
 Summary
 - Consolidated Copilot/agent instruction file for the Convolver JUCE project: CMake-based build, architecture overview, JUCE module list, convolution-focused conventions, and automation guidance.
