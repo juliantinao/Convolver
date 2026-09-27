@@ -26,8 +26,8 @@
       "displayName": "Linux Debug (WSL)",
       "description": "WSL Ninja Debug configuration",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/out/build/${presetName}",
-      "installDir": "${sourceDir}/out/install/${presetName}",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "installDir": "${sourceDir}/build/install/${presetName}",
       "cacheVariables": {
         "JUCE_DIR": "/home/djuli/JUCE",
         "CMAKE_BUILD_TYPE": "Debug",
@@ -49,8 +49,8 @@
       "displayName": "Linux Release (WSL)",
       "description": "WSL Ninja Release configuration",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/out/build/${presetName}",
-      "installDir": "${sourceDir}/out/install/${presetName}",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "installDir": "${sourceDir}/build/install/${presetName}",
       "cacheVariables": {
         "JUCE_DIR": "/home/djuli/JUCE",
         "CMAKE_BUILD_TYPE": "Release",

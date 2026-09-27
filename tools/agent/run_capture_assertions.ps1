@@ -33,11 +33,10 @@ function Find-Exe {
     # If the caller supplied an explicit path, try it first
     if ($Explicit -and (Test-Path $Explicit)) { return (Resolve-Path $Explicit).Path }
 
-    # Auto-detect common build output locations (VS CMake integration + standalone CMake)
+    # Auto-detect the build output. Both configurations live under build/, since
+    # the x64 configure preset uses a multi-config Visual Studio generator.
     $candidates = @(
-        "$Root\out\build\x64-debug\Convolver_artefacts\Debug\Convolver.exe",
         "$Root\build\Convolver_artefacts\Debug\Convolver.exe",
-        "$Root\out\build\x64-release\Convolver_artefacts\Release\Convolver.exe",
         "$Root\build\Convolver_artefacts\Release\Convolver.exe"
     )
     foreach ($c in $candidates) {

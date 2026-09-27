@@ -25,6 +25,11 @@ build/
 out/
 CMakeSettings.json
 
+# Packaging output (installers produced by tools/dist/build-installer.ps1).
+# Anchored with a leading slash on purpose: a bare "dist/" also matches
+# tools/dist/, which would silently exclude the packaging scripts themselves.
+/dist/
+
 # JUCE generated
 JuceLibraryCode/
 

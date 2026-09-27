@@ -1,0 +1,26 @@
+{
+  // CMake Tools drives the build entirely from CMakePresets.json. Pinning the
+  // presets here matters: when the selected configure preset stops existing
+  // (presets get renamed), CMake Tools silently ends up with no configuration,
+  // and the C/C++ extension then reports
+  // 'cannot open source file "JuceHeader.h"' for every header. Pinning removes
+  // that failure mode, and gives the repository exactly one documented way to
+  // build.
+  "cmake.useCMakePresets": "always",
+  "cmake.configurePreset": "x64",
+  "cmake.buildPreset": "x64-release",
+  "cmake.configureOnOpen": true,
+
+  // build/ holds the CMake tree plus an entire copy of JUCE - tens of thousands
+  // of files that are all generated. Watching and searching it wastes resources,
+  // and the file watcher holding handles inside build/ (previously out/) is what
+  // blocked the directory from being deleted.
+  "files.watcherExclude": {
+    "**/build/**": true,
+    "**/dist/**": true
+  },
+  "search.exclude": {
+    "**/build/**": true,
+    "**/dist/**": true
+  }
+}

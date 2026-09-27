@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(Convolver VERSION 0.1.0 LANGUAGES C CXX)
+project(Convolver VERSION 0.2.0 LANGUAGES C CXX)
 
 # JUCE is expected at C:\JUCE — override with -DJUCE_DIR=<path> if needed
 set(JUCE_DIR "C:/JUCE" CACHE PATH "Path to the JUCE framework")
@@ -28,6 +28,29 @@ juce_add_gui_app(Convolver
     ICON_BIG           "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icon/appicon.png"
     NEEDS_CURL         FALSE
     NEEDS_WEB_BROWSER  FALSE)
+
+# Keep the executable's VERSIONINFO resource in step with PROJECT_VERSION.
+#
+# juce_add_gui_app writes the version into JuceLibraryCode/Info.txt, and
+# _juce_add_resources_rc (JUCEUtils.cmake) turns that into
+# Convolver_resources.rc -- but its add_custom_command lists the *icon* as its
+# only dependency, not Info.txt. A version bump therefore never regenerates the
+# .rc: the executable relinks against the stale resource and Convolver.exe keeps
+# reporting the previous version, with no error anywhere to explain why.
+#
+# Dropping the .rc whenever Info.txt is newer than it forces the regeneration.
+# This has to happen at configure time, which is also when Info.txt is written.
+file(GLOB _convolver_info_file "${CMAKE_CURRENT_BINARY_DIR}/Convolver_artefacts/JuceLibraryCode/Info.txt")
+file(GLOB _convolver_rc_files  "${CMAKE_CURRENT_BINARY_DIR}/Convolver_artefacts/JuceLibraryCode/*_resources.rc")
+
+foreach(_info_file IN LISTS _convolver_info_file)
+    foreach(_rc_file IN LISTS _convolver_rc_files)
+        if(EXISTS "${_rc_file}" AND "${_info_file}" IS_NEWER_THAN "${_rc_file}")
+            file(REMOVE "${_rc_file}")
+            message(STATUS "Version resource is stale - regenerating ${_rc_file}")
+        endif()
+    endforeach()
+endforeach()
 
 # Generate JuceHeader.h for convenient single-include
 juce_generate_juce_header(Convolver)

@@ -6,9 +6,9 @@ description: >
 
 How it works
 - The application is built with `JUCE_LOG_ASSERTIONS=1` (set in CMakeLists.txt), which routes assertion messages through `Logger::writeToLog()` instead of `OutputDebugString`.
-- `Main.cpp` sets up a `juce::FileLogger` in the `ConvolverApplication` constructor that writes all logged messages (including assertion failures) to `convolver_runtime.log` next to the executable.
+- `Main.cpp` sets up a `juce::FileLogger` in the `ConvolverApplication` constructor that writes all logged messages (including assertion failures) to `convolver_runtime.log` next to the executable when that directory is writable, and otherwise to `%APPDATA%\Convolver\convolver_runtime.log` (which is what happens once the app is installed, since the install directory is not writable).
 - The script `run_capture_assertions.ps1`:
-  1. Auto-detects the built executable in common output paths (`out/build/x64-debug/...` for VS CMake integration, `build/...` for standalone CMake).
+  1. Auto-detects the built executable under `build\Convolver_artefacts\{Debug,Release}\`.
   2. Clears any previous runtime log.
   3. Launches the app with a configurable timeout.
   4. After the app exits, reads `convolver_runtime.log` and scans for assertion patterns (`JUCE Assertion failure in <file>:<line>`).
@@ -31,7 +31,7 @@ Usage
   ```
 
 Output locations
-- `<exe_dir>/convolver_runtime.log` — raw FileLogger output (created by the app).
+- `<exe_dir>/convolver_runtime.log` — raw FileLogger output (created by the app), or `%APPDATA%\Convolver\convolver_runtime.log` when the executable's directory is not writable.
 - `tools/agent/run.log` — copy of the runtime log for agent consumption.
 - `tools/agent/logs/run_stdout.log`, `run_stderr.log` — stdout/stderr capture.
 - `tools/agent/logs/cdb_*.log` — cdb session log (only when cdb.exe is available).
@@ -45,4 +45,4 @@ Agent workflow
 Notes
 - `JUCE_LOG_ASSERTIONS=1` makes assertions log-and-continue (no `__debugbreak()`) when NOT running under a debugger. When running under the VS debugger (green play button), assertions still trigger a breakpoint as expected.
 - The FileLogger is set up in the `ConvolverApplication` constructor, so assertions during `initialise()` or window creation are captured.
-- Do not modify generated files under `out/` or `Convolver_artefacts/JuceLibraryCode/`.
+- Do not modify generated files under `build/` or `Convolver_artefacts/JuceLibraryCode/`.

@@ -76,12 +76,10 @@ With an explicit executable path or custom timeout:
 
 ### Typical executable locations
 
-Depending on how CMake was invoked, the executable is usually found in one of these locations:
+Both configurations share a single build tree, because the `x64` configure preset uses a multi-config Visual Studio generator:
 
 - `build\Convolver_artefacts\Debug\Convolver.exe`
-- `build\Convolver_artefacts\Release\Convolver.exe`
-- `out\build\x64-debug\Convolver_artefacts\Debug\Convolver.exe`
-- `out\build\x64-release\Convolver_artefacts\Release\Convolver.exe`
+- `build\Convolver_artefacts\Release\Convolver.exe` ← the one that gets packaged
 
 ## Using the app
 

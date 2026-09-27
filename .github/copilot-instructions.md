@@ -7,17 +7,23 @@ Purpose
 Build system
 - The project uses **CMake** (minimum 3.22) with JUCE added via `add_subdirectory`.
 - JUCE location: `C:\JUCE` (override with `-DJUCE_DIR=<path>`).
-- Configure & build (Visual Studio generator):
+- Use the **CMake presets**. There is one multi-config configure preset named `x64`; Debug and Release share a single `build/` tree, so there is no `out/` directory.
   ```
-  cmake -B build -G "Visual Studio 18 2026" -A x64
-  cmake --build build --config Debug
+  cmake --preset x64
+  cmake --build --preset x64-release     # or: --preset x64-debug
   ```
+- Output paths: `build\Convolver_artefacts\Release\Convolver.exe` (what gets packaged) and `build\Convolver_artefacts\Debug\Convolver.exe`.
+- **`JuceHeader.h` is generated at build time, not at configure time.** It is a juceaide `CustomBuild` output under `build\Convolver_artefacts\JuceLibraryCode\JuceHeader.h`. Consequence: after "CMake: Delete Cache and Reconfigure" — or any other full clean — the C/C++ extension reports `cannot open source file "JuceHeader.h"` for every header until the project is **built** once. That is expected behaviour, not a broken configuration; do not go hunting for a CMake problem.
+- VS Code is pinned to the presets in `.vscode/settings.json` (`cmake.configurePreset: x64`, `cmake.buildPreset: x64-release`). If a preset is ever renamed, update that file too, or CMake Tools silently ends up with no configuration and IntelliSense stops resolving every include.
+- **The version is declared exactly once**, on the `project()` line in `CMakeLists.txt`. It reaches the executable's PE version resource and is then read back by the packaging driver. Never hardcode it anywhere else.
+- `packaging/icon/appicon.{svg,png,ico}` are generated, committed assets. Regenerate with `tools/icons/make-app-icon.ps1`; see `Docs/windows_packaging_inno_setup.md` §3 for why three formats are required.
 
 Running (default)
 - The recommended, default way to run the application and capture JUCE assertions is the provided runner script `tools/agent/run_capture_assertions.ps1`.
 - The build includes `JUCE_LOG_ASSERTIONS=1` (set in CMakeLists.txt), which routes assertion messages through `Logger::writeToLog()` instead of `OutputDebugString`, making them capturable without a native debugger.
-- `Main.cpp` sets up a `juce::FileLogger` in the `ConvolverApplication` constructor that writes all logged messages (including assertion failures) to `convolver_runtime.log` next to the executable.
-- The script auto-detects the built executable in common output paths (`out/build/x64-debug/...` for VS CMake integration, `build/...` for standalone CMake), runs the app with a configurable timeout, then reads and parses the FileLogger output for assertion patterns.
+- `Main.cpp` sets up a `juce::FileLogger` in the `ConvolverApplication` constructor. It writes to `convolver_runtime.log` **next to the executable when that directory is writable** (which is the case for dev builds), and otherwise falls back to `%APPDATA%\Convolver\convolver_runtime.log`, because the installer places the app somewhere an unelevated process cannot write to.
+- `tools/agent/run_capture_assertions.ps1` looks in **both** locations, preferring the one beside the executable.
+- The script auto-detects the built executable under `build\Convolver_artefacts\{Debug,Release}\` (both configurations share the `build/` tree, since the `x64` preset uses a multi-config generator), runs the app with a configurable timeout, then reads and parses the FileLogger output for assertion patterns.
 - If `cdb.exe` (Debugging Tools for Windows) is available the script uses it as an enhanced path that also captures stack traces on breakpoints.
 - `JUCE_LOG_ASSERTIONS=1` makes assertions log-and-continue when NOT running under a debugger. When running under the VS debugger (green play button), assertions still trigger a breakpoint as expected.
 - Default invocation (PowerShell):
@@ -40,6 +46,10 @@ High-level architecture (big picture)
 - CMakeLists.txt — project build definition; links JUCE modules.
 - Docs/ — documentation, design notes, and related materials. Includes `farina_algorithm_coding_reference.md` as the algorithmic reference for convolution.
 - tools/agent/ — automation helper scripts (build_vs.ps1, run/log helpers) and agent.config.json for automation rules.
+- tools/dist/ — distribution scripts: `unblock-distribution.ps1`, `inspect-signature.ps1` and `build-installer.ps1` (the installer driver).
+- tools/icons/ — `make-app-icon.ps1`, the single source of truth for the application artwork; generates the committed assets in `packaging/icon/`.
+- packaging/ — installer definition: `app.json` (the only app-specific file), `installer.iss` (app-agnostic template) and the generated icon assets.
+- dist/ — installer output (gitignored).
 - Data/logs: expected artifact locations referenced by scripts: logs/ (runtime), tools/agent/*.log, data/measurements/ for measurement artifacts (CSV/WAV).
 
 JUCE modules in use
@@ -96,6 +106,7 @@ Automation runtime warnings
 Documentation & existing guidance
 - Algorithmic reference: `Docs/farina_algorithm_coding_reference.md` — describes the Farina ESS pipeline. This project focuses on the **convolution steps** (Phase C: deconvolution via frequency-domain multiply, and general-purpose WAV convolution).
 - Distribution/trust reference: `Docs/windows_trust_and_distribution.md` — why Windows blocks the unsigned `Convolver.exe` on other PCs (SmartScreen / MOTW vs. UAC vs. Defender vs. Smart App Control), which certificate options are actually worth paying for, and the free distribution paths. Read this before proposing any signing or packaging work.
+- Packaging reference: `Docs/windows_packaging_inno_setup.md` — the Inno Setup flow, the three icon assets and why each format is required, how the version stays in one place, the release procedure, the verification checklist, and the handoff contract for replicating the flow in the other JUCE repositories.
 - JUCE documentation: https://docs.juce.com/master/index.html
 
 Distribution & Windows trust
@@ -108,6 +119,15 @@ Distribution & Windows trust
 - When a user reports a Windows block, identify which of the four mechanisms is acting before suggesting a fix; they have completely different remedies. See `Docs/windows_trust_and_distribution.md` §1.
 - Never distribute `build\Convolver_artefacts\Debug\Convolver.exe`; use the `Release` build.
 
+Packaging (Inno Setup)
+- Full reference: `Docs/windows_packaging_inno_setup.md`. Read it before changing anything under `packaging/` or `tools/dist/`.
+- Build the installer with `tools/dist/build-installer.ps1`. **It never compiles anything**: it packages the Release executable that is already on disk, so the binary you verified in VS Code is the binary that ships. Do not add a build step to it.
+- The driver absorbs the version, publisher and product name from the executable's PE version resource. Do not re-declare them in `packaging/app.json` or `packaging/installer.iss`.
+- `packaging/installer.iss` is an app-agnostic template; every app-specific value arrives as a `/D` define. Do not hardcode app names or versions in it.
+- `packaging/app.json` is the only app-specific file. Its `appId` must be a unique GUID and **must never change**, or upgrades install alongside the previous release instead of replacing it.
+- Run `.\tools\dist\build-installer.ps1 -CheckOnly` first; it prints the plan and the exact defines without compiling.
+- Always verify the finished installer on a clean machine: install, confirm `Convolver.exe` in the install folder carries no Mark-of-the-Web, and confirm a version upgrade replaces rather than duplicates.
+
 Other AI/assistant configs checked
 - No CONTRIBUTING.md present.
 - No CLAUDE.md, AGENTS.md, .cursorrules, .windsurfrules, CONVENTIONS.md, AIDER_CONVENTIONS.md, .clinerules, or .cline_rules found. If any are added later, merge important rules into this file.
@@ -115,7 +135,7 @@ Other AI/assistant configs checked
 Where to look for problems
 - Build logs: tools\agent\build.log
 - Run logs: tools\agent\run.log (copied from `<exe_dir>/convolver_runtime.log` by the runner script).
-- Raw FileLogger output: `<exe_dir>/convolver_runtime.log` (created by the app at runtime).
+- Raw FileLogger output: `<exe_dir>/convolver_runtime.log`, or `%APPDATA%\Convolver\convolver_runtime.log` when the executable's own directory is not writable (i.e. once installed).
 - stdout/stderr capture: tools\agent\logs\run_stdout.log, tools\agent\logs\run_stderr.log.
 - cdb session logs (when cdb.exe is available): tools\agent\logs\cdb_*.log.
 - Runtime assertions and errors: search run.log for `JUCE Assertion failure in`, "Unhandled exception", "terminate called", or "exception:".

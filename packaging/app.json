@@ -1,0 +1,11 @@
+{
+  "_comment": "Application identity for the installer. Everything the packager can learn from the built executable (version, publisher, product name) is deliberately absent here: those are read from the .exe's version resource so they only ever exist in CMakeLists.txt. The appId is the bare GUID without braces; installer.iss adds them with Inno's escaping, because a literal '{' in an Inno value must be doubled.",
+
+  "appId": "99C8668F-3A51-4F0A-90AD-B02587B81BAA",
+  "appName": "Convolver",
+  "exeName": "Convolver.exe",
+  "artefactDir": "build/Convolver_artefacts/Release",
+  "iconFile": "packaging/icon/appicon.ico",
+  "runtimeLogName": "convolver_runtime.log",
+  "licenseFile": null
+}
