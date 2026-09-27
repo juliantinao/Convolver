@@ -1,340 +1,165 @@
-# Empaquetado en Windows con Inno Setup
+# Empaquetar una app JUCE en Windows con Inno Setup
 
-Estado: flujo implementado; verificación en máquina limpia **pendiente** — septiembre 2026
-Aplica a: Convolver (JUCE GUI app, `Convolver.exe` Release de ~8.5 MB)
-Complementa a: `windows_trust_and_distribution.md` (por qué empaquetamos)
+**Estado:** flujo verificado end-to-end (2026-09). Referencia: Convolver 0.2.0 —
+instalación completa, `.exe` instalado sin MOTW, y upgrade in-place probados.
 
-Este documento es el **contrato de empaquetado**. Si vas a replicar el flujo en
-otro repo JUCE, el procedimiento paso a paso está en §6.
-
-### Qué está verificado y qué no
-
-| | |
-|---|---|
-| ✅ Versión desde una sola línea de `CMakeLists.txt` hasta el nombre del instalador | Probado con un cambio real (`0.1.0` → `0.2.0`). **Depende del arreglo del `.rc` documentado en §7** |
-| ✅ Los 5 lugares donde aparece el ícono | Probado, incluido el `.ico` del `.exe` (16/32/48/256) |
-| ✅ El instalador compila y lleva metadata y ícono propios | Probado (0 de 1024 píxeles distintos del ícono fuente) |
-| ✅ El instalador **corre desde un archivo con MOTW** (el escenario real de distribución) | Probado |
-| ⏳ Instalación completa en una máquina limpia | **Pendiente** |
-| ⏳ Que `Convolver.exe` instalado quede **sin MOTW** | **Pendiente** — es la premisa central de todo esto |
-| ⏳ Upgrade 0.1.0 → 0.2.0 que reemplace en vez de duplicar | **Pendiente** — es la prueba del `AppId` |
-
-No dar el flujo por bueno hasta cerrar los tres pendientes.
+**Para quién es esto:** un agente que tenga que replicar el mismo flujo de
+empaquetado en **otro repo JUCE**. Seguí los pasos en orden. Los bloques de código
+están listos para copiar, sustituyendo los nombres del repo destino.
 
 ---
 
-## 1. El modelo mental: dos fases con insumos distintos
+## Objetivo
 
-| Fase | Qué necesita | Dónde vive |
-|---|---|---|
-| **Compilar** | Código fuente + JUCE (`C:\JUCE`) + MSVC + CMake | VS Code, dentro del repo |
-| **Empaquetar** | Solo un `Release\App.exe` + Inno Setup | `tools/dist/build-installer.ps1` |
+Al terminar tiene que existir:
 
-Empaquetar **no necesita el código fuente**. De ahí la separación:
+- `tools/dist/build-installer.ps1` — un comando que produce el instalador
+- `packaging/app.json`, `packaging/installer.iss`, `packaging/icon/`
+- `dist/<App>-<version>-win64-setup.exe`
 
-```
-CMakeLists.txt ──build──► Convolver.exe ──empaqueta──► Convolver-0.1.0-win64-setup.exe
-   (versión)              (recurso PE)                  (dist/)
-```
+Tres propiedades no negociables:
 
-Y de ahí la propiedad central: **vos compilás y verificás en VS Code, y después
-empaquetás ese binario exacto sin recompilar nada.** El empaquetador nunca
-invoca CMake.
+1. **La versión se declara una sola vez**, en `CMakeLists.txt`. El empaquetador la
+   lee del `.exe`; no la vuelve a declarar.
+2. **El empaquetador no compila.** Empaqueta el Release que ya está en disco, para
+   que sea exactamente el binario que se verificó.
+3. **Un solo asset de arte** alimenta el ícono del `.exe` y los de las ventanas.
 
-### Por qué el instalador resuelve el problema de SmartScreen
-
-El instalador **extrae** `Convolver.exe` de su propio paquete y lo escribe como
-archivo nuevo en la carpeta destino. Un archivo creado así **no hereda el
-Mark-of-the-Web**, que es un flujo NTFS alternativo (`Zone.Identifier`) y no
-parte del contenido. Resultado: el usuario sufre los avisos **una sola vez**,
-al ejecutar el instalador, y la app arranca limpia para siempre.
-
-Ver `windows_trust_and_distribution.md` §B para el detalle de qué aviso aparece
-en cada momento y por qué `PrivilegesRequired=lowest` elimina el de UAC.
+Contexto de negocio (por qué un instalador y no un ZIP) está en
+`windows_trust_and_distribution.md` §B. Resumen: el instalador **extrae** el
+`.exe` como archivo nuevo, y un archivo nuevo no hereda el Mark-of-the-Web. El
+usuario ve los avisos **una sola vez**, al instalar, y la app arranca limpia.
 
 ---
 
-## 2. Archivos y responsabilidades
+## Paso 0 — Prerrequisito
 
-| Archivo | Rol |
-|---|---|
-| `packaging/app.json` | **Lo único específico de la app.** Identidad, rutas, ícono |
-| `packaging/installer.iss` | Plantilla Inno **agnóstica de la app**. Todo llega por `/D` |
-| `tools/dist/build-installer.ps1` | Driver: valida, absorbe la versión del `.exe`, invoca ISCC |
-| `tools/icons/make-app-icon.ps1` | Genera los 3 assets de arte desde una geometría |
-| `packaging/icon/appicon.{svg,png,ico}` | Assets generados (commiteados) |
-| `dist/` | Salida. En `.gitignore` |
-
-### `app.json`
-
-```jsonc
-{
-  "appId": "99C8668F-3A51-4F0A-90AD-B02587B81BAA",  // GUID propio, sin llaves
-  "appName": "Convolver",
-  "exeName": "Convolver.exe",
-  "artefactDir": "build/Convolver_artefacts/Release",
-  "iconFile": "packaging/icon/appicon.ico",
-  "runtimeLogName": "convolver_runtime.log",
-  "licenseFile": null
-}
-```
-
-**Deliberadamente ausentes: versión, publisher y nombre de producto.** Se leen
-del recurso de versión del `.exe` construido (ver §4).
-
-### El `AppId` es un GUID que inventamos nosotros
-
-No hay autoridad que lo emita ni registro donde se declare. Inno lo usa como
-clave de identidad. Dos reglas:
-
-1. **Único por app** — si dos apps comparten GUID, se pisan.
-2. **Inmutable para siempre** — si cambia entre versiones, cada upgrade se
-   instala **al lado** de la anterior en vez de reemplazarla.
-
-En `installer.iss` se escribe `AppId={{{#AppId}}`. La llave triple no es un typo:
-Inno trata un `{` suelto como inicio de constante, así que hay que duplicarlo.
-`{{` colapsa a `{`, luego se sustituye el GUID, y el `}` final es literal.
-
----
-
-## 3. Los tres assets de arte (y por qué no alcanza uno)
-
-Un solo script, `tools/icons/make-app-icon.ps1`, genera los tres desde una
-misma definición de geometría. No pueden divergir.
-
-| Asset | Consumidor | Formato | Por qué ese formato |
-|---|---|---|---|
-| `appicon.svg` | `juce_add_binary_data` | Vector | Los íconos de ventana/taskbar/diálogos se **rasterizan al tamaño exacto**. Bajar un bitmap de 512 a 16 deja el borde del disco dentado |
-| `appicon.png` (512²) | `juce_add_gui_app(ICON_BIG)` | Raster | Es lo único que funciona para `ICON_BIG` (ver abajo) |
-| `appicon.ico` | `SetupIconFile` | ICO multi-resolución | Inno **solo acepta `.ico`** para esta directiva |
-
-### Por qué `ICON_BIG` no puede recibir el SVG
-
-`juce_Icons.cpp` resuelve el archivo con `Drawable::createFromImageFile()` y
-después consulta **`getWidth()`** para decidir qué resoluciones emitir
-(`getBestIconForSize`, llamado con `returnNullIfNothingBigEnough = true`):
-
-| Formato | Se convierte en | ¿Fija `Component::getWidth()`? |
-|---|---|---|
-| PNG | `DrawableImage` | ✅ `setImageInternal()` llama a `setBounds()` |
-| SVG | `DrawableComposite` | ❌ Su constructor y `setBoundingBox()` solo llenan miembros internos. **`Component::setBounds` nunca se llama** → `getWidth()` = 0 |
-
-Con `getWidth()` en 0, **los cuatro tamaños son descartados** y el `.ico`
-generado queda **vacío**. JUCE mismo usa PNG de 512² en sus apps GUI
-(`DemoRunner`, `AudioPluginHost`) y no tiene ningún `.svg` en `examples/`.
-
-**Restricción de tiempo:** `_juce_generate_icon` llama a juceaide **durante la
-configuración**, no vía `add_custom_command`. Si el asset no existe al
-configurar, `_juce_check_icon_files_exist` tira `FATAL_ERROR`. Por eso los tres
-archivos van **commiteados**.
-
-**El `.ico` incluye 64×64**, que Inno recomienda y juceaide no emite (juceaide
-hace 16/32/48/256).
-
-### El generador es idempotente
-
-`Write-FileIfChanged` no reescribe un asset cuyo contenido no cambió. No es
-cosmético: el chequeo de frescura de §4 compara timestamps, y reescribir bytes
-idénticos convertiría esa advertencia en ruido.
-
----
-
-## 4. La versión vive en un solo lugar
-
-```
-CMakeLists.txt:3   project(Convolver VERSION 0.1.0)
-                          │
-                          ├─► juce_add_gui_app(VERSION "${PROJECT_VERSION}")
-                          │        └─► recurso VERSIONINFO del .exe
-                          │              (FileVersion / ProductVersion)
-                          └─► JuceHeader.h → ProjectInfo::versionString
-                                     │
-        build-installer.ps1 ─────────┘  lee el .exe, NO CMakeLists.txt
-                          │
-                          └─► AppVersion, VersionInfoVersion,
-                              nombre del instalador, "Aplicaciones instaladas"
-```
-
-**Para cambiar la versión: editás `CMakeLists.txt:3`, recompilás, empaquetás.**
-Nada más. El empaquetador absorbe la versión del binario; no la declara ni la
-compara contra CMake.
-
-Consecuencia útil: el resultado **siempre es coherente con lo que hay en disco**.
-Si el `.exe` dice `0.1.0`, el instalador se llama `Convolver-0.1.0-...`. Es
-imposible producir un instalador etiquetado 0.2.0 que contenga un binario 0.1.0.
-
-De regalo, el mismo mecanismo unifica `CompanyName` (→ `AppPublisher`) y
-`ProductName`. Por eso `app.json` no los repite.
-
-### Cómo sacar una versión nueva
-
-Se edita **una sola línea**, `CMakeLists.txt:3`:
-
-```diff
-- project(Convolver VERSION 0.1.0 LANGUAGES C CXX)
-+ project(Convolver VERSION 0.2.0 LANGUAGES C CXX)
-```
-
-Y después, en este orden:
+Inno Setup **6.3 o superior**, instalado **all users**. Probado con 7.1.0.
 
 ```powershell
-# 1. Recompilar. Esto regenera el recurso de version dentro del .exe.
-cmake --build --preset x64-release
-
-# 2. Empaquetar
-.\tools\dist\build-installer.ps1
+# Verificar que esta y donde
+Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup*_is1' |
+    Select-Object DisplayName, InstallLocation
+# Esperado: C:\Program Files\Inno Setup 7\
 ```
 
-Resultado: `dist\Convolver-0.2.0-win64-setup.exe`.
-
-**Lo que NO se toca:** `packaging/app.json`, `packaging/installer.iss`, los
-íconos, ni ningún otro archivo. Todo lo demás se acomoda solo, porque el
-empaquetador **lee la versión del binario** en vez de declararla.
-
-Lo único que hay que respetar es el orden: si empaquetás sin recompilar, el
-instalador sale con la versión **vieja** — y el chequeo de frescura te lo avisa,
-porque `CMakeLists.txt` va a quedar más nuevo que el `.exe`.
-
-> ⚠️ Este procedimiento **no funcionaba** hasta que se arregló un defecto de
-> JUCE que hacía que el recurso de versión del `.exe` nunca se regenerara.
-> El detalle y el arreglo están en §7 — **es obligatorio copiar ese bloque** al
-> replicar el flujo en otro repo, o el cambio de versión va a fallar en silencio.
-
-**Recomendado: commitear y taguear antes de empaquetar.** El driver imprime la
-revisión de git, y si la versión está sin commitear vas a ver
-`+ uncommitted changes`. Eso significa que el instalador quedó atado a un árbol
-sucio y no se puede reproducir desde un tag:
-
-```powershell
-# editar CMakeLists.txt:3, y despues
-git commit -am "Bump version to 0.2.0"
-git tag v0.2.0
-cmake --build --preset x64-release
-.\tools\dist\build-installer.ps1
-```
-
-Convención: **`x.y.z`**. JUCE y el `VersionInfoVersion` de Inno la aceptan; el
-driver normaliza hasta 4 componentes (`x.y.z.w`) por si algún día hace falta.
-
-### Chequeo de frescura
-
-El driver compara el mtime del `.exe` contra el del **fuente compilado más
-reciente** (`Source/**`, `CMakeLists.txt`, `appicon.svg`, `appicon.png`).
-
-- Cubre el caso "cambié la versión y no recompilé" **sin leer CMakeLists.txt**:
-  si bumpeás `PROJECT_VERSION` y no recompilás, `CMakeLists.txt` queda más nuevo
-  que el `.exe` y avisa.
-- **Solo advierte, no aborta.** Los `checkout` de git reescriben mtimes, así que
-  habría falsos positivos. `-Force` silencia la advertencia.
-- **Excluye `appicon.ico`**: ese asset lo lee Inno, no se compila en el `.exe`,
-  así que no puede justificar un aviso.
+El driver autodetecta `ISCC.exe` desde el registro (y si no, desde las rutas
+típicas y el PATH), así que **la ruta no se hardcodea en ningún archivo**.
 
 ---
 
-## 5. Procedimiento de release
+## Paso 1 — Averiguar los datos del repo destino
 
-```powershell
-# 1. Compilar y verificar en VS Code (o por consola)
-cmake --preset x64                # el configure cambió de nombre: antes x64-release
-cmake --build --preset x64-release
+**No adivinar ninguno.** Completar esta tabla antes de tocar código:
 
-# 2. Ver el plan sin compilar nada
-.\tools\dist\build-installer.ps1 -CheckOnly
-
-# 3. Empaquetar
-.\tools\dist\build-installer.ps1
-```
-
-Salida: `dist\Convolver-0.1.0-win64-setup.exe` (~4.5 MB) más el SHA-256 del
-`.exe` empaquetado, el del instalador y la revisión de git.
-
-### Checklist de verificación antes de distribuir
-
-- [ ] Se compiló **Release**, nunca Debug (27 MB vs 8.5 MB)
-- [ ] El driver no advirtió sobre binario viejo (o entendiste por qué usaste `-Force`)
-- [ ] **Instalar en una máquina limpia** y confirmar que `Convolver.exe` en la
-      carpeta de instalación **no tiene MOTW**:
-      `.\tools\dist\unblock-distribution.ps1 -Path "<carpeta>" -CheckOnly`
-- [ ] Aparece en "Aplicaciones instaladas" con la versión correcta
-- [ ] Se desinstala limpio
-- [ ] **Upgrade: instalar 0.1.0 y después 0.1.1 debe REEMPLAZAR, no duplicar**
-      (es la prueba del `AppId`)
-
-### Las 5 superficies del ícono
-
-| # | Superficie | Origen |
+| Dato | Cómo obtenerlo | Ejemplo (Convolver) |
 |---|---|---|
-| 1 | `Convolver.exe` en el Explorador (16/32/48/256) | `ICON_BIG` → PNG |
-| 2 | Barra de título de la ventana principal | `appicon.svg` vía `AppIcon.h` |
-| 3 | Botón en la barra de tareas | ídem |
-| 4 | Ventana de Ayuda (título + taskbar) | ídem |
-| 5 | Asistente del instalador + "Aplicaciones instaladas" + accesos directos | `appicon.ico` |
+| Nombre del producto | `PRODUCT_NAME` en `juce_add_gui_app` | `Convolver` |
+| Nombre del `.exe` | buildear y mirar | `Convolver.exe` |
+| **Carpeta de artefactos Release** | buildear y buscar el `.exe` | `build/Convolver_artefacts/Release` |
+| Nombre del log de runtime | `FileLogger` en `Source/Main.cpp` | `convolver_runtime.log` |
+| Target de `juce_add_gui_app` | `CMakeLists.txt` | `Convolver` |
+| ¿Tiene `CMakePresets.json`? | | sí |
 
-**Nota sobre Windows:** JUCE envía **un solo HICON** para `ICON_BIG` y
-`ICON_SMALL` (`juce_Windowing_windows.cpp`), así que el bitmap que devuelve
-`createAppIcon()` es el que Windows reduce para la taskbar. De ahí que el SVG
-vectorial importe: el ícono de 16 px de la taskbar se dibuja nativamente.
+⚠️ **La carpeta de artefactos no es uniforme entre repos.** No asumir `build/`.
+En los repos conocidos, unos usan `build/` y otro no tiene presets ni build
+Release. Si no hay build Release, ese es un problema previo que hay que resolver
+antes de continuar.
 
 ---
 
-## 6. Replicar el flujo en otro repo JUCE
+## Paso 2 — Copiar tres archivos sin editar
 
-El objetivo de diseño es que **el `.iss` y el driver sean idénticos entre repos**,
-y que lo único distinto sea `app.json`. Si al replicar te encontrás editando
-`installer.iss` o `build-installer.ps1`, algo se está haciendo de más: avisá,
-porque significa que la parametrización tiene un hueco.
+| Copiar de este repo | Destino | Por qué es genérico |
+|---|---|---|
+| `tools/dist/build-installer.ps1` | igual | Saca todo de `app.json` + del `.exe` |
+| `packaging/installer.iss` | igual | Recibe todo por `/D`; tiene guardas `#error` |
+| `tools/icons/make-app-icon.ps1` | igual | Geometría propia y aislada |
 
-### Paso 0 — Prerrequisito
+**Si tuviste que editar alguno de los tres, la parametrización tiene un hueco.**
+Reportalo en vez de hardcodear: la premisa de diseño es que estos archivos sean
+idénticos entre repos.
 
-Inno Setup **6.3 o superior** (probado con 7.1.0), instalado **all users**:
-`C:\Program Files\Inno Setup 7\ISCC.exe`. El driver lo autodetecta desde el
-registro (`Uninstall\Inno Setup*`), así que la ruta **no** se hardcodea en ningún
-lado. Si el repo va a buildear en otra máquina, ahí también hace falta.
+---
 
-### Paso 1 — Copiar tal cual, sin editar una línea
+## Paso 3 — `packaging/app.json`
 
-| Archivo | Por qué es genérico |
-|---|---|
-| `tools/dist/build-installer.ps1` | Saca todo de `app.json` + del recurso de versión del `.exe` |
-| `packaging/installer.iss` | Recibe todo por `/D`; tiene guardas `#error` si falta un define |
-| `tools/icons/make-app-icon.ps1` | Geometría propia y aislada; ver Paso 5 |
-
-### Paso 2 — `packaging/app.json`
-
-Generá un **GUID nuevo** — `(New-Guid).Guid.ToUpper()` en PowerShell — y ponelo
-**sin llaves**:
+Generá un **GUID nuevo**: `(New-Guid).Guid.ToUpper()`. Va **sin llaves**.
 
 ```jsonc
 {
   "appId": "GENERA-UN-GUID-NUEVO-ACA",
-  "appName": "NombreDeLaApp",          // como aparece en Inicio y en Aplicaciones instaladas
+  "appName": "NombreDeLaApp",
   "exeName": "NombreDeLaApp.exe",
   "artefactDir": "build/NombreDeLaApp_artefacts/Release",
   "iconFile": "packaging/icon/appicon.ico",
   "runtimeLogName": "nombredelaapp_runtime.log",
-  "licenseFile": null                   // o una ruta relativa al repo
+  "licenseFile": null
 }
 ```
 
-**No pongas la versión ni el publisher acá.** Salen del `.exe`.
+| Campo | Notas |
+|---|---|
+| `appId` | **Único por app e inmutable para siempre.** Si cambia entre versiones, cada upgrade se instala **al lado** de la anterior en vez de reemplazarla |
+| `artefactDir` | Relativo a la raíz del repo. Del Paso 1 |
+| `iconFile` | El `.ico` que genera el script de íconos |
+| `licenseFile` | `null`, o una ruta relativa al repo |
 
-### Paso 3 — `CMakeLists.txt`
+**No agregar versión, publisher ni nombre de producto.** Se leen del `.exe`.
 
-Cuatro cambios. El bloque de versión y copyright:
+---
+
+## Paso 4 — `CMakeLists.txt`
+
+Cinco cambios. Los nombres son de Convolver; sustituir por los del destino.
+
+### 4.1 — La versión, una sola vez
 
 ```cmake
-project(NombreDeLaApp VERSION 0.1.0 LANGUAGES C CXX)   # ← UNICA fuente de la version
+project(NombreDeLaApp VERSION 0.1.0 LANGUAGES C CXX)
+                        ^^^^^^ la unica declaracion de la version
+```
 
+### 4.2 — `juce_add_gui_app`
+
+```cmake
 juce_add_gui_app(NombreDeLaApp
     PRODUCT_NAME       "NombreDeLaApp"
-    COMPANY_NAME       "TuNombre"                       # ← se vuelve AppPublisher
-    COMPANY_COPYRIGHT  "(C) 2026 TuNombre"
-    VERSION            "${PROJECT_VERSION}"             # ← no hardcodear
+    COMPANY_NAME       "TuNombre"                        # se vuelve AppPublisher
+    COMPANY_COPYRIGHT  "(C) 2026 TuNombre"               # llena LegalCopyright
+    VERSION            "${PROJECT_VERSION}"              # NO hardcodear
     ICON_BIG           "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icon/appicon.png"
     ...)
 ```
 
-El runtime estático **en los dos targets** (si falta en el segundo, `LNK4098`):
+### 4.3 — Regenerar el recurso de versión ⚠️ **obligatorio**
+
+Sin este bloque, cambiar la versión **falla en silencio**: el `.exe` sigue
+reportando la versión anterior y no aparece ningún error. Va justo después de
+`juce_add_gui_app`.
+
+> Causa: en `_juce_add_resources_rc` de JUCE, el `add_custom_command` que genera
+> `*_resources.rc` declara **solo el ícono** en `DEPENDS`, no `Info.txt`, que es
+> donde vive la versión. Sin dependencia, el `.rc` nunca se regenera.
+
+```cmake
+file(GLOB _app_info_file "${CMAKE_CURRENT_BINARY_DIR}/NombreDeLaApp_artefacts/JuceLibraryCode/Info.txt")
+file(GLOB _app_rc_files  "${CMAKE_CURRENT_BINARY_DIR}/NombreDeLaApp_artefacts/JuceLibraryCode/*_resources.rc")
+
+foreach(_info_file IN LISTS _app_info_file)
+    foreach(_rc_file IN LISTS _app_rc_files)
+        if(EXISTS "${_rc_file}" AND "${_info_file}" IS_NEWER_THAN "${_rc_file}")
+            file(REMOVE "${_rc_file}")
+            message(STATUS "Version resource is stale - regenerating ${_rc_file}")
+        endif()
+    endforeach()
+endforeach()
+```
+
+### 4.4 — Runtime MSVC estático en los **dos** targets ⚠️
+
+Si se aplica solo al ejecutable, el linker mezcla dos CRTs (`LNK4098`), que es
+comportamiento indefinido, no un warning cosmético.
 
 ```cmake
 if(MSVC)
@@ -352,40 +177,20 @@ if(MSVC)
 endif()
 ```
 
-Y `NombreDeLaAppAssets` en el `target_link_libraries`.
-
-**Este cuarto cambio es el que más fácil se olvida, y sin él el cambio de versión
-falla en silencio.** Va inmediatamente después de `juce_add_gui_app`, con el
-nombre del target reemplazado:
+### 4.5 — Linkear el target de assets
 
 ```cmake
-# El .rc generado por JUCE depende del icono pero NO de Info.txt, que es donde
-# vive la version. Sin esto, cambiar PROJECT_VERSION no regenera el .rc, el .exe
-# se relinkea contra el recurso viejo y sigue reportando la version anterior,
-# sin ningun error que lo explique. Ver §7.
-file(GLOB _app_info_file "${CMAKE_CURRENT_BINARY_DIR}/NombreDeLaApp_artefacts/JuceLibraryCode/Info.txt")
-file(GLOB _app_rc_files  "${CMAKE_CURRENT_BINARY_DIR}/NombreDeLaApp_artefacts/JuceLibraryCode/*_resources.rc")
-
-foreach(_info_file IN LISTS _app_info_file)
-    foreach(_rc_file IN LISTS _app_rc_files)
-        if(EXISTS "${_rc_file}" AND "${_info_file}" IS_NEWER_THAN "${_rc_file}")
-            file(REMOVE "${_rc_file}")
-            message(STATUS "Version resource is stale - regenerating ${_rc_file}")
-        endif()
-    endforeach()
-endforeach()
+target_link_libraries(NombreDeLaApp PRIVATE
+    NombreDeLaAppAssets
+    ...)
 ```
 
-**Verificación de que quedó bien:** cambiá `PROJECT_VERSION` a otro valor,
-recompilá, y confirmá que el `.exe` lo reporta:
+---
 
-```powershell
-(Get-Item "build\NombreDeLaApp_artefacts\Release\NombreDeLaApp.exe").VersionInfo.ProductVersion
-```
+## Paso 5 — `Source/AppIcon.h`
 
-### Paso 4 — `Source/AppIcon.h`
-
-Copiarlo y cambiar **solo** el namespace del header de binary data:
+Copiar el de este repo y cambiar **solo el namespace** del header de binary data.
+El símbolo sale del nombre del archivo: `appicon.svg` → `appicon_svg`.
 
 ```cpp
 #include <NombreDeLaAppAssets.h>
@@ -395,87 +200,215 @@ Copiarlo y cambiar **solo** el namespace del header de binary data:
                                              (size_t) NombreDeLaAppAssets::appicon_svgSize);
 ```
 
-El nombre del símbolo sale del nombre del archivo: `appicon.svg` → `appicon_svg`.
+Después, **conectar el ícono en las ventanas** del repo destino. Buscar dónde la
+app setea el ícono y usar `createAppIcon()`:
 
-### Paso 5 — Los assets de ícono
+```cpp
+const auto appIcon = createAppIcon();     // default 32 px
+setIcon (appIcon);
+if (auto* peer = getPeer())
+    peer->setIcon (appIcon);
+```
 
-**Primero verificá la convención de artefactos del repo destino.** No la adivines:
-Convolver y LogSweepGenerator usan `build/`, y **ADM además no tiene
-`CMakePresets.json` ni build Release** (solo Debug). Eso define `artefactDir`.
+Si el repo no tiene `AppIcon.h`, hay que crearlo y wirearlo en **todas** las
+ventanas (principal y diálogos).
 
-Después corré `.\tools\icons\make-app-icon.ps1` y reemplazá el diseño si querés
-otro arte. Los tres archivos se generan juntos desde la misma geometría, así que
-no pueden divergir.
+---
 
-### Paso 6 — `.gitignore` y `.vscode`
-
-- Agregar `dist/` (salida del empaquetado).
-- Copiar `.vscode/settings.json` ajustando `cmake.configurePreset` /
-  `cmake.buildPreset` a los nombres reales del repo destino.
-
-### Paso 7 — Verificar end-to-end
+## Paso 6 — Generar los assets de ícono
 
 ```powershell
-cmake --preset x64
-cmake --build --preset x64-release
-.\tools\dist\build-installer.ps1 -CheckOnly    # ver el plan, sin compilar
+.\tools\icons\make-app-icon.ps1
+```
+
+Escribe tres archivos, todos **commiteados** (son entrada del build):
+
+| Asset | Lo consume | Formato |
+|---|---|---|
+| `appicon.svg` | `juce_add_binary_data` → íconos de ventana/taskbar/diálogo | Vector |
+| `appicon.png` (512²) | `juce_add_gui_app(ICON_BIG)` → ícono del `.exe` | Raster |
+| `appicon.ico` | `SetupIconFile` → ícono del instalador | ICO multi-resolución |
+
+**Los tres formatos son necesarios, no es redundancia:**
+
+- `ICON_BIG` **no acepta SVG**. juceaide lo resuelve a un `DrawableComposite`, que
+  nunca llama a `Component::setBounds()`, así que `getWidth()` da 0, todos los
+  tamaños se descartan y el `.ico` sale **vacío**. Necesita un raster de **≥256 px**.
+- El **runtime** quiere vector: rasteriza al tamaño exacto, y así el ícono de 16 px
+  de la taskbar queda nítido en vez de ser un bitmap reducido.
+- `SetupIconFile` **solo acepta `.ico`**, y no existe la sintaxis `,index` para esa
+  directiva. El `.ico` generado incluye 64², que Inno recomienda y juceaide no emite.
+
+El script es **idempotente**: no reescribe un asset cuyo contenido no cambió, para
+no mover timestamps y disparar en falso el chequeo de frescura.
+
+Ajustar el diseño (colores, geometría) editando el script, no los assets.
+
+---
+
+## Paso 7 — `.gitignore` y `.vscode`
+
+En `.gitignore`, **anclar la regla con barra inicial**:
+
+```gitignore
+/dist/
+```
+
+Sin la barra, `dist/` también matchea `tools/dist/` y **excluye en silencio el
+driver de empaquetado**. Es un error que ya se cometió una vez.
+
+En `.vscode/settings.json`, ajustar los nombres de preset a los del repo destino:
+
+```jsonc
+{
+  "cmake.useCMakePresets": "always",
+  "cmake.configurePreset": "NOMBRE_DEL_CONFIGURE_PRESET",
+  "cmake.buildPreset": "NOMBRE_DEL_BUILD_PRESET_RELEASE",
+  "cmake.configureOnOpen": true,
+  "files.watcherExclude": { "**/build/**": true, "**/dist/**": true },
+  "search.exclude":       { "**/build/**": true, "**/dist/**": true }
+}
+```
+
+Fijar los presets evita que CMake Tools quede apuntando a un preset inexistente:
+cuando eso pasa se queda **sin configuración** y el C/C++ marca
+`cannot open source file "JuceHeader.h"` en todos los headers.
+
+---
+
+## Paso 8 — Verificar
+
+```powershell
+cmake --preset <preset>
+cmake --build --preset <preset-release>
+
+.\tools\dist\build-installer.ps1 -CheckOnly   # muestra el plan sin compilar
 .\tools\dist\build-installer.ps1
 ```
 
-Y después el checklist de §5. **El mínimo indispensable:** instalar en una máquina
-limpia y confirmar que el `.exe` instalado no tiene MOTW.
+### Definición de terminado
 
-### Lo que NO hay que hacer
+Ninguno de estos es opcional:
 
-- No agregar un paso de compilación al driver. Su valor es empaquetar **exactamente**
-  el binario que ya verificaste.
-- No declarar la versión en `app.json` ni en el `.iss`.
-- No cambiar el `appId` al sacar una versión nueva: rompe el upgrade in-place.
-- No editar `installer.iss` para un caso particular sin parametrizarlo por `/D`.
+- [ ] `dist\<App>-<version>-win64-setup.exe` existe
+- [ ] El nombre del instalador lleva la **versión correcta**
+- [ ] El `.ico` del `.exe` tiene **16, 32, 48 y 256**:
+      ```powershell
+      # listar las entradas del .ico generado
+      $b=[IO.File]::ReadAllBytes("build\<App>_artefacts\JuceLibraryCode\icon.ico")
+      $n=[BitConverter]::ToUInt16($b,4)
+      0..($n-1) | ForEach-Object { $w=$b[6+$_*16]; if($w -eq 0){256}else{$w} }
+      ```
+- [ ] **Instalar en una máquina limpia y confirmar que el `.exe` instalado NO tiene
+      MOTW** — es la premisa central de todo esto:
+      ```powershell
+      $exe = "$env:LOCALAPPDATA\Programs\<App>\<App>.exe"
+      Get-Item $exe -Stream *          # debe aparecer SOLO :$DATA
+      ```
+- [ ] La app instalada **arranca sin ningún cartel**
+- [ ] Aparece en "Aplicaciones instaladas" con la versión correcta
+- [ ] Se desinstala limpio
+- [ ] **Upgrade in-place:** instalar la versión A y después la B. Debe
+      **reemplazar**, no duplicar la entrada. Es la prueba del `AppId`
+
+### Las 5 superficies del ícono
+
+Revisar las cinco; es donde más fácil se escapa un problema:
+
+| # | Superficie | Origen |
+|---|---|---|
+| 1 | `<App>.exe` en el Explorador (probar **iconos extra grandes** → 256) | `ICON_BIG` ← PNG |
+| 2 | Barra de título de la ventana principal | `appicon.svg` |
+| 3 | Botón en la barra de tareas | `appicon.svg` |
+| 4 | Diálogos (título + taskbar) | `appicon.svg` |
+| 5 | Asistente del instalador + "Aplicaciones instaladas" + accesos directos | `appicon.ico` |
 
 ---
 
-## 7. Errores ya cometidos, para no repetirlos
+## Mantenimiento: sacar una versión nueva
+
+**Una línea**, `CMakeLists.txt`:
+
+```diff
+- project(NombreDeLaApp VERSION 0.1.0 LANGUAGES C CXX)
++ project(NombreDeLaApp VERSION 0.2.0 LANGUAGES C CXX)
+```
+
+Y después, **en este orden**:
+
+```powershell
+cmake --build --preset <preset-release>
+.\tools\dist\build-installer.ps1
+```
+
+No se toca nada más: `app.json`, `installer.iss` y los íconos quedan iguales.
+
+**Commitear y taguear antes de empaquetar**, o el driver va a reportar
+`+ uncommitted changes` y el instalador quedará atado a un árbol no reproducible:
+
+```powershell
+git commit -am "Bump version to 0.2.0"
+git tag v0.2.0
+cmake --build --preset <preset-release>
+.\tools\dist\build-installer.ps1
+```
+
+Convención `x.y.z`. El driver normaliza hasta 4 componentes.
+
+**Si empaquetás sin recompilar**, el instalador sale con la versión vieja. El
+driver avisa (chequeo de frescura contra los fuentes compilados); `-Force` lo
+silencia cuando el aviso es un falso positivo por mtime de git.
+
+---
+
+## Errores conocidos
 
 | Síntoma | Causa | Solución |
 |---|---|---|
-| `LNK4098: defaultlib 'MSVCRTD' conflicts` | `juce_add_binary_data` crea una librería **independiente** que no hereda el `MSVC_RUNTIME_LIBRARY` del ejecutable → `/MDd` contra `/MTd` | Aplicar el runtime también al target de binary data. No es solo ruido: un binario con dos CRTs tiene comportamiento indefinido |
-| **Cambiás la versión, recompilás, y el `.exe` sigue reportando la versión vieja** (sin ningún error) | El `add_custom_command` que genera `Convolver_resources.rc` en [`_juce_add_resources_rc`](file:///C:/JUCE/extras/Build/CMake/JUCEUtils.cmake) declara **solo el ícono** como `DEPENDS`, no `Info.txt`, que es donde vive la versión. El `.rc` nunca se regenera y el `.exe` se relinkea contra el recurso viejo | Ya resuelto en `CMakeLists.txt`: al configurar, se borra el `.rc` si `Info.txt` es más nuevo, forzando la regeneración. **Si replicás el flujo en otro repo, no te olvides de copiar ese bloque** |
-| `Error: Unknown constant "99C8..."` | Inno interpreta `{GUID}` como referencia a constante | `AppId` sin llaves en `app.json`, `AppId={{{#AppId}}` en el `.iss` |
-| `Resource update error: Icon file is invalid` | `SetupIconFile` **solo** acepta `.ico`, no PNG ni SVG, y **no** existe la sintaxis `,index` para esta directiva | Generar `appicon.ico` real |
-| `.ico` generado vacío o sin 48/256 | `ICON_BIG` apunta a un SVG → `getWidth()` = 0 | Usar PNG ≥256 como `ICON_BIG` |
-| Íconos de ventana/taskbar borrosos | Reducir el PNG de 512 al tamaño final en un solo paso | Rasterizar el SVG al tamaño pedido |
-| Log de runtime nunca se escribe en la app instalada | `Main.cpp` escribía junto al `.exe`, que es de solo lectura bajo `Program Files` | Fallback a `%APPDATA%\Convolver\` |
-| `Setup was unable to create the directory "...\Temp\is-XXXX.tmp". Error 5: Access is denied.` | Lanzar el instalador **desde dentro del workspace del agente**. `Setup.exe` de Inno es un stub: tiene que extraer el motor a `%TEMP%` antes de poder correr, y el sandbox del harness corre los procesos en **Low Integrity**, que no puede escribir en un `%TEMP%` Medium IL | Copiar el instalador fuera del repo (Escritorio, `Downloads`) y ejecutarlo desde ahí. **No afecta a usuarios reales**: descargan a `Downloads` y lo corren fuera de cualquier sandbox |
-| Después de "Delete Cache and Reconfigure", IntelliSense marca `cannot open source file "JuceHeader.h"` en todos los headers | `JuceHeader.h` se genera en **tiempo de build** (paso `CustomBuild` de juceaide), no al configurar | Compilar una vez. No es un problema de CMake, no hay nada que arreglar |
-| El driver avisa "executable looks older than the source" sin haber cambiado código | Un `git checkout` reescribió los mtimes, o se regeneró un asset de ícono | `-Force`. El generador de íconos es idempotente: no reescribe un asset cuyo contenido no cambió, así que no lo causa |
+| Cambiás la versión, recompilás y el `.exe` sigue con la vieja, **sin error** | El `.rc` de JUCE depende del ícono pero no de `Info.txt` | El bloque del Paso 4.3. Es obligatorio |
+| `LNK4098: defaultlib 'MSVCRTD' conflicts` | `juce_add_binary_data` crea un target aparte que no hereda el runtime | Paso 4.4: aplicar el runtime a los dos targets |
+| `Error: Unknown constant "99C8..."` al compilar el `.iss` | Inno lee `{GUID}` como constante | `appId` sin llaves en `app.json`; `AppId={{{#AppId}}` en el `.iss` |
+| `Resource update error: Icon file is invalid` | `SetupIconFile` solo acepta `.ico` | Generar `appicon.ico` (Paso 6) |
+| El `.ico` del `.exe` sale vacío o sin 48/256 | `ICON_BIG` apunta a un SVG | Usar PNG ≥256 como `ICON_BIG` |
+| Íconos de ventana/taskbar borrosos | Se reduce un PNG de 512 al tamaño final en un paso | Rasterizar el SVG al tamaño pedido |
+| `cannot open source file "JuceHeader.h"` en todos los headers | `JuceHeader.h` se genera en **tiempo de build**, no al configurar. Pasa después de "Delete Cache and Reconfigure" | Compilar una vez. **No es un problema de CMake** |
+| `Setup was unable to create the directory "...\Temp\is-XXXX.tmp". Error 5: Access is denied.` | Ejecutar el instalador **desde dentro del workspace del agente**. El sandbox del harness corre los procesos en Low Integrity, y Low IL no puede escribir en un `%TEMP%` Medium IL | Copiar el instalador fuera del repo (Escritorio, `Downloads`) y ejecutarlo desde ahí. **No afecta a usuarios reales** |
+| El driver avisa "executable looks older than the source" sin cambios de código | Un `git checkout` reescribió los mtimes | `-Force` |
+| `tools/dist/*.ps1` no aparece en `git status` | Regla `dist/` sin anclar en `.gitignore` | `/dist/` (Paso 7) |
 
 ---
 
-## 8. Licencia de Inno Setup
+## Archivos y responsabilidades
 
-Inno Setup **solicita** una licencia comercial, pero no la exige:
+| Archivo | Rol |
+|---|---|
+| `packaging/app.json` | **Lo único específico de la app** |
+| `packaging/installer.iss` | Plantilla Inno agnóstica; todo llega por `/D` |
+| `tools/dist/build-installer.ps1` | Driver: valida, absorbe la versión del `.exe`, invoca ISCC |
+| `tools/icons/make-app-icon.ps1` | Genera los 3 assets desde una geometría |
+| `packaging/icon/appicon.{svg,png,ico}` | Assets generados, commiteados |
+| `dist/` | Salida del empaquetado. En `.gitignore` |
 
-- **Non-commercial: no se pide.**
-- For-profit con facturación **> USD 5000/año**: se pide (Single User / Team / Enterprise).
-- Solo uso interno, sin distribuir: también se pide.
-- **Si todavía no publicaste instaladores en producción: no corresponde comprarla.**
+### Ajustes del instalador que ya trae la plantilla
 
-El compilador imprime `Non-commercial use only` en cada corrida mientras no haya
-una clave instalada. Los instaladores generados **no quedan marcados** como sin
-licencia. Alternativas 100 % libres si se quiere evitar la pregunta: **NSIS** o
-**WiX + CPack**.
+| Directiva | Valor | Por qué |
+|---|---|---|
+| `PrivilegesRequired` | `lowest` | Instalación per-user en `%LOCALAPPDATA%\Programs` → **sin UAC** |
+| `ArchitecturesAllowed` | `x64compatible` | `x64` quedó deprecado en Inno 6.3 y significa `x64os`, que excluye Arm64 con emulación |
+| `WizardStyle` | `modern` | |
+| `Compression` | `lzma2/max` | |
+| `[Languages]` | english + spanish | Cambiar si el destino no necesita español |
 
+**No editar `installer.iss` para un caso particular sin parametrizarlo por `/D`.**
+
+---
+
+## Licencia de Inno Setup
+
+Inno Setup **solicita** una licencia comercial pero no la exige: no se pide para
+uso non-commercial, ni mientras no se hayan publicado instaladores en producción.
+El compilador imprime `Non-commercial use only` en cada corrida si no hay clave.
+Los instaladores generados no quedan marcados.
+
+Alternativas 100 % libres si se quiere evitar la pregunta: NSIS, o WiX con CPack.
 Fuente: <https://jrsoftware.org/isorder.php>
-
----
-
-## 9. Referencias
-
-- [Inno Setup — descargas](https://jrsoftware.org/isdl.php) (probado con 7.1.0, instalado all-users)
-- [SetupIconFile](https://jrsoftware.org/ishelp/topic_setup_setupiconfile.htm) — confirma que exige `.ico`
-- [Architecture Identifiers](https://jrsoftware.org/is6help/topic_archidentifiers.htm) — `x64compatible` vs `x64os`; `x64` quedó deprecado en 6.3
-- [PrivilegesRequired](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm) — `lowest` = non administrative install mode
-- [Constants](https://jrsoftware.org/ishelp/topic_consts.htm) — tabla de auto constantes: `{autopf}` → `{userpf}` sin privilegios
-- [Licencias comerciales](https://jrsoftware.org/isorder.php)
-- `windows_trust_and_distribution.md` — SmartScreen, MOTW, y por qué el instalador es la respuesta gratuita

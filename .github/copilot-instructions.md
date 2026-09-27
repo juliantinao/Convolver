@@ -16,7 +16,7 @@ Build system
 - **`JuceHeader.h` is generated at build time, not at configure time.** It is a juceaide `CustomBuild` output under `build\Convolver_artefacts\JuceLibraryCode\JuceHeader.h`. Consequence: after "CMake: Delete Cache and Reconfigure" — or any other full clean — the C/C++ extension reports `cannot open source file "JuceHeader.h"` for every header until the project is **built** once. That is expected behaviour, not a broken configuration; do not go hunting for a CMake problem.
 - VS Code is pinned to the presets in `.vscode/settings.json` (`cmake.configurePreset: x64`, `cmake.buildPreset: x64-release`). If a preset is ever renamed, update that file too, or CMake Tools silently ends up with no configuration and IntelliSense stops resolving every include.
 - **The version is declared exactly once**, on the `project()` line in `CMakeLists.txt`. It reaches the executable's PE version resource and is then read back by the packaging driver. Never hardcode it anywhere else.
-- `packaging/icon/appicon.{svg,png,ico}` are generated, committed assets. Regenerate with `tools/icons/make-app-icon.ps1`; see `Docs/windows_packaging_inno_setup.md` §3 for why three formats are required.
+- `packaging/icon/appicon.{svg,png,ico}` are generated, committed assets. Regenerate with `tools/icons/make-app-icon.ps1`; the packaging guide's **Paso 6** explains why three formats are required and why none of them is redundant.
 
 Running (default)
 - The recommended, default way to run the application and capture JUCE assertions is the provided runner script `tools/agent/run_capture_assertions.ps1`.
@@ -106,7 +106,7 @@ Automation runtime warnings
 Documentation & existing guidance
 - Algorithmic reference: `Docs/farina_algorithm_coding_reference.md` — describes the Farina ESS pipeline. This project focuses on the **convolution steps** (Phase C: deconvolution via frequency-domain multiply, and general-purpose WAV convolution).
 - Distribution/trust reference: `Docs/windows_trust_and_distribution.md` — why Windows blocks the unsigned `Convolver.exe` on other PCs (SmartScreen / MOTW vs. UAC vs. Defender vs. Smart App Control), which certificate options are actually worth paying for, and the free distribution paths. Read this before proposing any signing or packaging work.
-- Packaging reference: `Docs/windows_packaging_inno_setup.md` — the Inno Setup flow, the three icon assets and why each format is required, how the version stays in one place, the release procedure, the verification checklist, and the handoff contract for replicating the flow in the other JUCE repositories.
+- Packaging reference: `Docs/windows_packaging_inno_setup.md` — **a step-by-step replication brief (Pasos 0-8) written so an agent can reproduce the whole packaging flow in another JUCE repository.** Covers the three icon assets and why none is redundant, how the version stays in one place, the release and upgrade procedure, a definition of done, and a table of errors already made. Read it before touching anything under `packaging/`, `tools/dist/` or `tools/icons/`.
 - JUCE documentation: https://docs.juce.com/master/index.html
 
 Distribution & Windows trust
@@ -123,6 +123,8 @@ Packaging (Inno Setup)
 - Full reference: `Docs/windows_packaging_inno_setup.md`. Read it before changing anything under `packaging/` or `tools/dist/`.
 - Build the installer with `tools/dist/build-installer.ps1`. **It never compiles anything**: it packages the Release executable that is already on disk, so the binary you verified in VS Code is the binary that ships. Do not add a build step to it.
 - The driver absorbs the version, publisher and product name from the executable's PE version resource. Do not re-declare them in `packaging/app.json` or `packaging/installer.iss`.
+- **A version bump needs the `.rc` regeneration block in `CMakeLists.txt`.** Without it the executable keeps reporting the previous version, silently and with no error, because JUCE's generated `.rc` does not depend on `Info.txt`. If you replicate this flow in another repository this block is mandatory — see the packaging guide, Paso 4.3.
+- That block is also why you must never "clean up" the `file(GLOB ...)` / `IS_NEWER_THAN` logic in `CMakeLists.txt`: it looks like build cruft and is not.
 - `packaging/installer.iss` is an app-agnostic template; every app-specific value arrives as a `/D` define. Do not hardcode app names or versions in it.
 - `packaging/app.json` is the only app-specific file. Its `appId` must be a unique GUID and **must never change**, or upgrades install alongside the previous release instead of replacing it.
 - Run `.\tools\dist\build-installer.ps1 -CheckOnly` first; it prints the plan and the exact defines without compiling.
