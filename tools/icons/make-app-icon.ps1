@@ -42,8 +42,9 @@
       AudioPluginHost).
 
     The drawing reproduces the original programmatic design that used to live in
-    Source/AppIcon.h: a dark blue-grey disc with a white three-cycle sine wave
-    across it.
+    Source/AppIcon.h, recoloured to the ADM icon palette: a near-black disc
+    (#0D1117, the ADM icon background) with a coral (#F08A6C) three-cycle sine
+    wave across it.
 
 .PARAMETER Size
     Coordinate space and PNG master edge length. Defaults to 512, comfortably
@@ -123,9 +124,10 @@ function Write-FileIfChanged {
 # and spanning 0.7, stroke 1.8/32 of the canvas, 40 segments over 3 cycles.
 $steps   = 40
 $cycles  = 3.0
-$disc    = [System.Drawing.Color]::FromArgb(255, 0x3A, 0x3A, 0x5C)
-$discHex = '#3A3A5C'
-$waveHex = '#FFFFFF'
+$disc    = [System.Drawing.Color]::FromArgb(255, 0x0D, 0x11, 0x17)
+$discHex = '#0D1117'
+$wave    = [System.Drawing.Color]::FromArgb(255, 0xF0, 0x8A, 0x6C)
+$waveHex = '#F08A6C'
 
 # Waveform vertices in the given coordinate space.
 function Get-WavePoints([double] $canvas) {
@@ -162,7 +164,7 @@ function New-IconBitmap([int] $canvas) {
         $brush = New-Object System.Drawing.SolidBrush $disc
         try { $graphics.FillEllipse($brush, 0, 0, $canvas, $canvas) } finally { $brush.Dispose() }
 
-        $pen = New-Object System.Drawing.Pen ([System.Drawing.Color]::White), ([single](1.8 * ($canvas / 32.0)))
+        $pen = New-Object System.Drawing.Pen ($wave), ([single](1.8 * ($canvas / 32.0)))
         try {
             $pen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
             $pen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round

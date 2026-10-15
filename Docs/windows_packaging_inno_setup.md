@@ -1,7 +1,15 @@
 # Empaquetar una app JUCE en Windows con Inno Setup
 
-**Estado:** flujo verificado end-to-end (2026-09). Referencia: Convolver 0.2.0 —
-instalación completa, `.exe` instalado sin MOTW, y upgrade in-place probados.
+**Estado:** flujo verificado end-to-end (2026-09) en **dos** repos:
+
+- **Convolver 0.2.0** — instalación completa, `.exe` instalado sin MOTW, y upgrade
+  in-place probados.
+- **LogSweepGenerator 0.1.1** — versión única, ícono multi-resolución, runtime
+  estático verificado con `dumpbin`, y `LNK4098` ausente.
+
+Las dos pasadas encontraron huecos **distintos**. Los dos están incorporados acá:
+donde diga "en Convolver pasó X" o "en LogSweepGenerator pasó Y", es porque ese
+repo ya pagó ese error. No lo repitas.
 
 **Para quién es esto:** un agente que tenga que replicar el mismo flujo de
 empaquetado en **otro repo JUCE**. Seguí los pasos en orden. Los bloques de código
@@ -26,9 +34,12 @@ Tres propiedades no negociables:
 3. **Un solo asset de arte** alimenta el ícono del `.exe` y los de las ventanas.
 
 Contexto de negocio (por qué un instalador y no un ZIP) está en
-`windows_trust_and_distribution.md` §B. Resumen: el instalador **extrae** el
-`.exe` como archivo nuevo, y un archivo nuevo no hereda el Mark-of-the-Web. El
-usuario ve los avisos **una sola vez**, al instalar, y la app arranca limpia.
+`windows_trust_and_distribution.md` §B — un documento que hoy vive **solo en el
+repo de Convolver**: si el destino va a necesitar el resto del material sobre
+SmartScreen, MOTW y firma de código, copialo también. Resumen: el instalador
+**extrae** el `.exe` como archivo nuevo, y un archivo nuevo no hereda el
+Mark-of-the-Web. El usuario ve los avisos **una sola vez**, al instalar, y la app
+arranca limpia.
 
 ---
 
@@ -57,28 +68,79 @@ típicas y el PATH), así que **la ruta no se hardcodea en ningún archivo**.
 | Nombre del producto | `PRODUCT_NAME` en `juce_add_gui_app` | `Convolver` |
 | Nombre del `.exe` | buildear y mirar | `Convolver.exe` |
 | **Carpeta de artefactos Release** | buildear y buscar el `.exe` | `build/Convolver_artefacts/Release` |
-| Nombre del log de runtime | `FileLogger` en `Source/Main.cpp` | `convolver_runtime.log` |
+| Nombre del log de runtime | `FileLogger` en `Main.cpp`, o el nombre que tendría (Paso 3) | `convolver_runtime.log` |
 | Target de `juce_add_gui_app` | `CMakeLists.txt` | `Convolver` |
 | ¿Tiene `CMakePresets.json`? | | sí |
+| Nombres de los presets | `CMakePresets.json` | `default` / `release` |
+| **Carpeta de fuentes** | mirar la raíz del repo | `Source/` (Convolver), `src/` (LogSweepGenerator) |
 
 ⚠️ **La carpeta de artefactos no es uniforme entre repos.** No asumir `build/`.
 En los repos conocidos, unos usan `build/` y otro no tiene presets ni build
 Release. Si no hay build Release, ese es un problema previo que hay que resolver
 antes de continuar.
 
+⚠️ **El aviso de frescura solo mira `Source/` y `CMakeLists.txt`.** Lo hace con
+`Test-Path`, así que en Windows `Source` matchea `src` por ser case-insensitive
+— pero **no** matchea `app/`, `code/` ni ninguna otra carpeta. Si las fuentes
+viven en otro lado, el chequeo **no salta nunca y no avisa**: podés empaquetar un
+binario viejo sin que nadie te lo diga. Verificá que la carpeta del Paso 1 exista,
+o ajustá la ruta en el driver (ver "Errores conocidos").
+
 ---
 
-## Paso 2 — Copiar tres archivos sin editar
+## Paso 2 — Qué copiar tal cual y qué adaptar
 
-| Copiar de este repo | Destino | Por qué es genérico |
+La premisa es que la **lógica** sea idéntica entre repos. Los literales de
+presentación y la geometría del arte **no** pueden serlo: son del repo destino.
+
+### 2.1 — Copiar y tocar **una sola línea**
+
+| Copiar de este repo | Destino | Por qué es agnóstico |
 |---|---|---|
-| `tools/dist/build-installer.ps1` | igual | Saca todo de `app.json` + del `.exe` |
-| `packaging/installer.iss` | igual | Recibe todo por `/D`; tiene guardas `#error` |
-| `tools/icons/make-app-icon.ps1` | igual | Geometría propia y aislada |
+| `packaging/installer.iss` | igual | Todos los valores llegan por `/D`; tiene guardas `#error` |
 
-**Si tuviste que editar alguno de los tres, la parametrización tiene un hueco.**
-Reportalo en vez de hardcodear: la premisa de diseño es que estos archivos sean
-idénticos entre repos.
+La única línea app-específica es el comentario de cabecera
+(`;  Convolver installer script.`). Cambialo por el nombre de tu app. Es un
+comentario, no afecta el instalador, pero dejarlo con el nombre de otra app
+confunde a quien lo lea después.
+
+⚠️ **No intentes parametrizarlo con `{#AppName}`.** ISPP **no** expande defines
+dentro de comentarios `;`: verificado con una prueba — un `{#Define}` inexistente
+en un comentario `;` compila sin error, o sea que la sustitución no ocurre. Es la
+excepción a "todo llega por `/D`".
+
+### 2.2 — Copiar y adaptar literales
+
+| Archivo | Qué cambiar |
+|---|---|
+| `tools/dist/build-installer.ps1` | El `.SYNOPSIS` (nombre de la app), el banner `=== <App> :: build installer ===`, el hint `cmake --preset <...>` de cuando falta el `.exe`, y el mensaje final de MOTW |
+| `tools/icons/make-app-icon.ps1` | El `.SYNOPSIS`, el texto de `ICON_BIG` en el `.DESCRIPTION`, la línea de reporte del `.png`, y **la geometría** (colores y forma, en el bloque `design`) |
+
+Los dos están escritos para Convolver: sin adaptarlos, el empaquetador de tu app
+imprime `=== Convolver :: build installer ===` y sugiere presets que no existen en
+tu repo. **Eso no es un hueco que haya que reportar, es trabajo del Paso 2.**
+
+⚠️ **El mensaje final de `build-installer.ps1` cierra sugiriendo
+`tools/dist/unblock-distribution.ps1`**, que este paso no copia. O copiás ese
+script también (también tiene literales de Convolver), o reemplazás el hint por el
+comando de verificación de MOTW de la Definición de terminado.
+
+### 2.3 — Lo que sí es un hueco
+
+Solo si tuviste que tocar la **lógica**. La premisa de diseño es que los nombres,
+la versión, las rutas y los presets salgan de `app.json` + del `.exe` + del
+`CMakePresets.json`. Si tuviste que hardcodear algo para que funcionara, reportalo
+en vez de dejarlo: es exactamente lo que va a romper el próximo repo.
+
+### 2.4 — Opcionales, no parte del flujo
+
+| Archivo | Para qué |
+|---|---|
+| `tools/dist/unblock-distribution.ps1` | Limpia el MOTW de una carpeta y reporta el estado de SmartScreen. Sirve para diagnosticar, no para empaquetar |
+| `tools/dist/inspect-signature.ps1` | Reporta el estado Authenticode y las firmas de cada payload |
+
+Ninguno hace falta para producir el instalador, y los dos tienen rutas y nombres
+de Convolver hardcodeados.
 
 ---
 
@@ -103,9 +165,17 @@ Generá un **GUID nuevo**: `(New-Guid).Guid.ToUpper()`. Va **sin llaves**.
 | `appId` | **Único por app e inmutable para siempre.** Si cambia entre versiones, cada upgrade se instala **al lado** de la anterior en vez de reemplazarla |
 | `artefactDir` | Relativo a la raíz del repo. Del Paso 1 |
 | `iconFile` | El `.ico` que genera el script de íconos |
+| `runtimeLogName` | Nombre del log que la app escribe junto a su `.exe`. Lo usa `[UninstallDelete]` para no dejar basura |
 | `licenseFile` | `null`, o una ruta relativa al repo |
 
 **No agregar versión, publisher ni nombre de producto.** Se leen del `.exe`.
+
+⚠️ **`runtimeLogName` es obligatorio aunque la app no loguee nada.** La plantilla
+tiene `#ifndef RuntimeLogName #error`, así que `installer.iss` no compila sin ese
+define. Si el repo no tiene `FileLogger` en `Main.cpp` — LogSweepGenerator no lo
+tenía — declaralo igual con el nombre que tendría: la entrada `[UninstallDelete]`
+sobre un archivo que nunca existió es inocua, y el día que agregues logging no hay
+que volver a tocar el instalador.
 
 ---
 
@@ -119,6 +189,21 @@ Cinco cambios. Los nombres son de Convolver; sustituir por los del destino.
 project(NombreDeLaApp VERSION 0.1.0 LANGUAGES C CXX)
                         ^^^^^^ la unica declaracion de la version
 ```
+
+"Una sola vez" no se cumple solo por escribirlo acá: hay que **sacar las copias
+que ya existan**. La que más se escapa es la que la app se reporta a sí misma:
+
+```cpp
+// Main.cpp — ANTES: una segunda declaración, que se desincroniza en silencio
+const juce::String getApplicationVersion() override { return "1.1.0"; }
+
+// DESPUÉS: lee el mismo recurso del que el instalador absorbe la versión
+const juce::String getApplicationVersion() override { return ProjectInfo::versionString; }
+```
+
+En LogSweepGenerator el `.exe` decía `0.1.0`, la app decía `1.1.0`, y nada avisaba
+de la diferencia. `ProjectInfo::projectName` resuelve lo mismo para el nombre.
+Antes de seguir, buscá hardcodeos: `git grep -n "1\.1\.0"`.
 
 ### 4.2 — `juce_add_gui_app`
 
@@ -156,10 +241,27 @@ foreach(_info_file IN LISTS _app_info_file)
 endforeach()
 ```
 
-### 4.4 — Runtime MSVC estático en los **dos** targets ⚠️
+### 4.4 — Runtime MSVC estático ⚠️
 
-Si se aplica solo al ejecutable, el linker mezcla dos CRTs (`LNK4098`), que es
-comportamiento indefinido, no un warning cosmético.
+El `.exe` **no debe depender** de `msvcp140.dll` / `vcruntime140.dll` /
+`concrt140.dll`. Si dependiera, el instalador tendría que arrastrar el VC++
+Redistributable (~25 MB y un reinicio potencial) para no fallar en una máquina
+limpia. Con el CRT estático el instalador queda **sin prerrequisitos**.
+
+Hay dos formas de fijarlo. **Preferí la global** salvo que el repo ya use la otra.
+
+**Opción A — variable global, antes de cualquier target (preferida):**
+
+```cmake
+# Va ARRIBA de todo: antes de juce_add_gui_app y de add_subdirectory(JUCE).
+#
+# Una variable de directorio se copia a la propiedad del target en el momento en
+# que el target se crea, así que todo target definido después la hereda —
+# incluido el de juce_add_binary_data.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+```
+
+**Opción B — target por target:**
 
 ```cmake
 if(MSVC)
@@ -177,6 +279,22 @@ if(MSVC)
 endif()
 ```
 
+Por qué la diferencia importa:
+
+- **B es frágil.** Cubre exactamente los targets que enumeraste. El día que
+  aparezca otro target propio — un binary data nuevo, una lib de tests — queda en
+  `/MD` por default, el linker mezcla dos CRTs y salta `LNK4098`. Eso es
+  literalmente lo que pasó en Convolver: `03290ec` linkeó estático solo el
+  ejecutable, y el `juce_add_binary_data` que agregó `ac6bdb5` después reintrodujo
+  el problema.
+- **A es inmune a eso**, porque no enumera targets. Es la que usa
+  LogSweepGenerator y su build Release no reporta `LNK4098`.
+- **No mezcles las dos sin motivo.** Si el repo ya tiene B y funciona, dejalo; el
+  punto es no volver a agregar un target sin runtime.
+
+`LNK4098` no es un warning cosmético: un binario con dos CRTs linkeados tiene
+comportamiento indefinido.
+
 ### 4.5 — Linkear el target de assets
 
 ```cmake
@@ -187,9 +305,10 @@ target_link_libraries(NombreDeLaApp PRIVATE
 
 ---
 
-## Paso 5 — `Source/AppIcon.h`
+## Paso 5 — `<carpeta-de-fuentes>/AppIcon.h`
 
 Copiar el de este repo y cambiar **solo el namespace** del header de binary data.
+La carpeta es la del Paso 1: `Source/` en Convolver, `src/` en LogSweepGenerator.
 El símbolo sale del nombre del archivo: `appicon.svg` → `appicon_svg`.
 
 ```cpp
@@ -212,6 +331,14 @@ if (auto* peer = getPeer())
 
 Si el repo no tiene `AppIcon.h`, hay que crearlo y wirearlo en **todas** las
 ventanas (principal y diálogos).
+
+⚠️ **Revisá las instrucciones para agentes del repo destino**
+(`.github/copilot-instructions.md`, `AGENTS.md`) antes de tocarlo. Es un archivo
+que este flujo **sí** modifica, y en LogSweepGenerator figuraba en la lista de "no
+modificar": hubo que actualizar esa instrucción, porque el ícono dejó de dibujarse
+a mano en el header y pasó a rasterizar el SVG embebido. Si la instrucción y este
+Paso se contradicen, gana este Paso — pero dejá la instrucción alineada o el
+próximo agente va a revertir el cambio.
 
 ---
 
@@ -274,6 +401,16 @@ Fijar los presets evita que CMake Tools quede apuntando a un preset inexistente:
 cuando eso pasa se queda **sin configuración** y el C/C++ marca
 `cannot open source file "JuceHeader.h"` en todos los headers.
 
+⚠️ **Borrá cualquier `cmake.generator` que ya estuviera en el archivo.** Con
+`useCMakePresets: always` esa clave pelea contra el preset, y si apunta a una
+versión de Visual Studio que no está instalada el configure falla. En
+LogSweepGenerator el `settings.json` decía `"Visual Studio 17 2022"` mientras el
+preset y el VS instalado eran 18 2026.
+
+Lo mismo vale para `.vscode/tasks.json`: si el task `configure` hardcodea
+`cmake -S . -B build -G "<generador>"`, cambialo por `cmake --preset <preset>`. Un
+generador que ya no está instalado rompe el task sin explicar por qué.
+
 ---
 
 ## Paso 8 — Verificar
@@ -292,6 +429,16 @@ Ninguno de estos es opcional:
 
 - [ ] `dist\<App>-<version>-win64-setup.exe` existe
 - [ ] El nombre del instalador lleva la **versión correcta**
+- [ ] El build Release **no imprime `LNK4098`**
+- [ ] El `.exe` **no importa DLLs del runtime MSVC**:
+      ```powershell
+      dumpbin /nologo /dependents build\<App>_artefacts\Release\<App>.exe |
+          Select-String "msvcp|vcruntime|concrt"
+      # Sin resultados. Si aparece alguna, el runtime estático no se aplicó, o se
+      # aplicó después de crear el target: ver Paso 4.4.
+      ```
+      Lo esperado es un puñado de DLLs del OS (`KERNEL32`, `USER32`, `GDI32`,
+      `d2d1`, `d3d11`, `dcomp`, `dwmapi`, …) y **nada más**
 - [ ] El `.ico` del `.exe` tiene **16, 32, 48 y 256**:
       ```powershell
       # listar las entradas del .ico generado
@@ -365,29 +512,43 @@ silencia cuando el aviso es un falso positivo por mtime de git.
 
 | Síntoma | Causa | Solución |
 |---|---|---|
+| **Versión** | | |
 | Cambiás la versión, recompilás y el `.exe` sigue con la vieja, **sin error** | El `.rc` de JUCE depende del ícono pero no de `Info.txt` | El bloque del Paso 4.3. Es obligatorio |
-| `LNK4098: defaultlib 'MSVCRTD' conflicts` | `juce_add_binary_data` crea un target aparte que no hereda el runtime | Paso 4.4: aplicar el runtime a los dos targets |
-| `Error: Unknown constant "99C8..."` al compilar el `.iss` | Inno lee `{GUID}` como constante | `appId` sin llaves en `app.json`; `AppId={{{#AppId}}` en el `.iss` |
+| La app y el instalador reportan **versiones distintas** | `getApplicationVersion()` hardcodeado en `Main.cpp`, además de la versión del `.exe` | Paso 4.1: devolver `ProjectInfo::versionString` |
+| **Runtime MSVC** | | |
+| `LNK4098: defaultlib 'MSVCRTD' conflicts` | Hay un target propio — típicamente el de `juce_add_binary_data` — que no heredó el runtime estático y quedó en `/MD` | Paso 4.4, **opción A** (global, arriba de todo): no enumera targets, así que no se puede olvidar uno |
+| `dumpbin /dependents` lista `msvcp140.dll` / `vcruntime140.dll` / `concrt140.dll` | El runtime estático no se aplicó, o se aplicó **después** de crear el target | Paso 4.4. Verificá que el `set()` esté por encima de `juce_add_gui_app` y de `add_subdirectory(JUCE)` |
+| **Íconos** | | |
 | `Resource update error: Icon file is invalid` | `SetupIconFile` solo acepta `.ico` | Generar `appicon.ico` (Paso 6) |
 | El `.ico` del `.exe` sale vacío o sin 48/256 | `ICON_BIG` apunta a un SVG | Usar PNG ≥256 como `ICON_BIG` |
 | Íconos de ventana/taskbar borrosos | Se reduce un PNG de 512 al tamaño final en un paso | Rasterizar el SVG al tamaño pedido |
-| `cannot open source file "JuceHeader.h"` en todos los headers | `JuceHeader.h` se genera en **tiempo de build**, no al configurar. Pasa después de "Delete Cache and Reconfigure" | Compilar una vez. **No es un problema de CMake** |
-| `Setup was unable to create the directory "...\Temp\is-XXXX.tmp". Error 5: Access is denied.` | Ejecutar el instalador **desde dentro del workspace del agente**. El sandbox del harness corre los procesos en Low Integrity, y Low IL no puede escribir en un `%TEMP%` Medium IL | Copiar el instalador fuera del repo (Escritorio, `Downloads`) y ejecutarlo desde ahí. **No afecta a usuarios reales** |
+| **Inno Setup / app.json** | | |
+| `Error: Unknown constant "99C8..."` al compilar el `.iss` | Inno lee `{GUID}` como constante | `appId` sin llaves en `app.json`; `AppId={{{#AppId}}` en el `.iss` |
+| `#error RuntimeLogName is not defined` al compilar el `.iss` | La app no tiene `FileLogger`, pero la plantilla exige el define | Paso 3: declaralo igual en `app.json`; la entrada `[UninstallDelete]` es inocua |
+| El reporte del driver dice `Version: 0.0.0.0` para Inno Setup | `ISCC.exe` no lleva `FileVersion` en su recurso de versión | Cosmético, ignorar. La versión real la imprime ISCC en su banner: `Compiler engine version: Inno Setup 7.1.0` |
+| **Chequeo de frescura** | | |
+| El aviso **nunca** salta, por más que edites los fuentes | El driver solo mira `Source/` y `CMakeLists.txt`. `Test-Path` matchea `Source`↔`src` por case-insensitivity, pero no `app/` ni `code/` | Confirmá la carpeta de fuentes del Paso 1, o agregá la ruta al array `$compiledInputs` del driver |
 | El driver avisa "executable looks older than the source" sin cambios de código | Un `git checkout` reescribió los mtimes | `-Force` |
+| **Build** | | |
+| `cannot open source file "JuceHeader.h"` en todos los headers | `JuceHeader.h` se genera en **tiempo de build**, no al configurar. Pasa después de "Delete Cache and Reconfigure" | Compilar una vez. **No es un problema de CMake** |
+| **Sandbox del agente** (no afecta a usuarios reales) | | |
+| `Setup was unable to create the directory "...\Temp\is-XXXX.tmp". Error 5: Access is denied.` | Ejecutar el instalador **desde dentro del workspace del agente**. El sandbox del harness corre los procesos en Low Integrity, y Low IL no puede escribir en un `%TEMP%` Medium IL | Copiar el instalador fuera del repo (Escritorio, `Downloads`) y ejecutarlo desde ahí |
+| `Start-Process` no lanza la app y el job queda colgado sin salida | `Start-Process` pasa por ShellExecute y el sandbox lo bloquea; además el hijo puede retener el pipe de stdout | Usá `[System.Diagnostics.Process]::Start($exe)` y después `$p.Kill()` desde el mismo proceso |
+| **Repositorio** | | |
 | `tools/dist/*.ps1` no aparece en `git status` | Regla `dist/` sin anclar en `.gitignore` | `/dist/` (Paso 7) |
 
 ---
 
 ## Archivos y responsabilidades
 
-| Archivo | Rol |
-|---|---|
-| `packaging/app.json` | **Lo único específico de la app** |
-| `packaging/installer.iss` | Plantilla Inno agnóstica; todo llega por `/D` |
-| `tools/dist/build-installer.ps1` | Driver: valida, absorbe la versión del `.exe`, invoca ISCC |
-| `tools/icons/make-app-icon.ps1` | Genera los 3 assets desde una geometría |
-| `packaging/icon/appicon.{svg,png,ico}` | Assets generados, commiteados |
-| `dist/` | Salida del empaquetado. En `.gitignore` |
+| Archivo | Rol | Al replicar |
+|---|---|---|
+| `packaging/app.json` | **Lo único específico de la app** | Escribir de cero (Paso 3) |
+| `packaging/installer.iss` | Plantilla Inno agnóstica; todo llega por `/D` | Copiar; cambiar solo el comentario de cabecera (Paso 2.1) |
+| `tools/dist/build-installer.ps1` | Driver: valida, absorbe la versión del `.exe`, invoca ISCC | Copiar y adaptar literales (Paso 2.2) |
+| `tools/icons/make-app-icon.ps1` | Genera los 3 assets desde una geometría | Copiar y adaptar literales **+ geometría** (Paso 2.2) |
+| `packaging/icon/appicon.{svg,png,ico}` | Assets generados, commiteados | Regenerar (Paso 6) |
+| `dist/` | Salida del empaquetado. En `.gitignore` | — |
 
 ### Ajustes del instalador que ya trae la plantilla
 
